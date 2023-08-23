@@ -2,10 +2,17 @@ from lora import LoRa
 from ST7735 import TFT,TFTColor
 from sysfont import sysfont
 from machine import SPI,Pin
-from machine import Pin, Timer
+from machine import Pin, Timer, PWM
 import time
 import math
 import gc
+
+LoRaMaster = 1
+
+cntRxFrame = 0
+cntTxFrame = 0
+lineLCD = 0
+respFlag = 0
 
 # reset do lora RA02 na SX1278
 # dokumentacja chinska z dupy wyjeta
@@ -13,10 +20,16 @@ import gc
 # eksperymetalnie wydedukowano reset aktywny 0 na min 100 ms kurwa, kurwa, kurwa...chinskie zjeby
 loraResetPin = Pin(7, Pin.OUT)
 led = Pin(25, Pin.OUT)
+
+# podswietlenie LCD z PWM na 90%
+podswietlenie = 90
+bl = PWM(Pin(13))
+bl.freq(1000)
+bl.duty_u16(int((podswietlenie/100)*65535))
+
 timer = Timer()
 
-spi = SPI(1, baudrate=80000000, polarity=0, phase=0,
-          sck=Pin(10), mosi=Pin(11), miso=None)
+spi = SPI(1, baudrate=80000000, polarity=0, phase=0, sck=Pin(10), mosi=Pin(11), miso=None)
 tft=TFT(spi,16,17,18)
 tft.initr()
 tft.rgb(True)
@@ -28,14 +41,14 @@ time.sleep_ms(100)
 
 try:
 	spi_lora = SPI(
-		0,
-		baudrate=10000000,
-        polarity=0,
-        phase=0,
-		sck=Pin(2, Pin.OUT, Pin.PULL_DOWN),
-		mosi=Pin(3, Pin.OUT, Pin.PULL_UP),
-		miso=Pin(4, Pin.IN, Pin.PULL_UP),
-	)
+                        0,
+                        baudrate=10000000,
+                        polarity=0,
+                        phase=0,
+                        sck=Pin(2, Pin.OUT, Pin.PULL_DOWN),
+                        mosi=Pin(3, Pin.OUT, Pin.PULL_UP),
+                        miso=Pin(4, Pin.IN, Pin.PULL_UP),
+                  )
 	spi_lora.init()
 
 except Exception as e:
@@ -57,11 +70,13 @@ lora = LoRa(
 
 # Receive handler
 def handler(x):
-    print(str(x))
-    # Echo message
-    lora.send(x)
-    # Put module back in recv mode
-    lora.recv()
+    global cntRxFrame, cntTxFrame, LoRaMaster, respFlag
+    cntRxFrame = cntRxFrame + 1
+    if LoRaMaster == 0:
+        lora.send("Resp->" + str(x))
+        cntTxFrame = cntTxFrame + 1        
+        lora.recv()
+    respFlag = 1
 
 def blink(timer):
     led.toggle()
@@ -185,7 +200,7 @@ def tftprinttest():
     tft.text((0, v), " seconds.", TFT.WHITE, sysfont)
 
 def showBMP():
-    f=open('kolo.bmp', 'rb')    
+    f=open('lora.bmp', 'rb')    
     if f.read(2) == b'BM':  #header
         dummy = f.read(8) #file size(4), creator bytes(4)
         offset = int.from_bytes(f.read(4), 'little')
@@ -218,18 +233,64 @@ def showBMP():
                         tft._pushcolor(TFTColor(bgr[2],bgr[1],bgr[0]))
     f.close()
 def test_main():
+    global cntRxFrame, cntTxFrame, lineLCD, LoRaMaster, respFlag
     timer.init(freq=2.5, mode=Timer.PERIODIC, callback=blink)
+    showBMP()
+    time.sleep_ms(3000) 
+    tft.fill(TFT.BLACK)
+    tft.text((0, 0), "Test LoRa", TFT.WHITE, sysfont, 1)
+    tft.text((0, 10), "wersja: 1.00", TFT.WHITE, sysfont, 1)
+    tft.text((0, 20), "by JC 2023.08.23", TFT.WHITE, sysfont, 1)
+    tft.text((0, 30), "LoRa SX1278 na SPI0", TFT.WHITE, sysfont, 1)
+    tft.text((0, 40), "LCD ST7735 na SPI1", TFT.WHITE, sysfont, 1)
+    tft.text((0, 50), "PI PICO 2040", TFT.WHITE, sysfont, 1)
+    tft.text((0, 60), "microPytone", TFT.WHITE, sysfont, 1)
+    if LoRaMaster:
+        tft.text((0, 70), "LoRa Master", TFT.GREEN, sysfont, 1)
+    else:
+        tft.text((0, 70), "LoRa Slave", TFT.GREEN, sysfont, 1)        
+    time.sleep_ms(5000)
+    
     # Set handler
     lora.on_recv(handler)
     # Put module in recv mode
-    lora.recv() 
+    if LoRaMaster == 0:
+        lora.recv()
+    
+    cntFrmOk = 0
+    cntFrmTout= 0
 
     while(1):
-        tft.fill(TFT.BLACK)
-        tft.text((0, 0), "Test LoRa SX1278 na SPI0 i LCD ST7735 na SPI1, na raspberry PI PICO 2040 microPytone by JC 2023.08.20 wersja 1.0. ", TFT.WHITE, sysfont, 1)
-        lora.send('Hello world!')
-        time.sleep_ms(4000)
-        print("Temperatura: " + str(lora.get_temperature()))
+        if LoRaMaster:
+            cntTxFrame = cntTxFrame + 1
 
+            lora.send("Req-> " + str(cntTxFrame))
+            lora.recv()
+            
+            timeOut = 0
+            while ((respFlag == 0) and (timeOut < 100)):
+                time.sleep_ms(10)
+                timeOut = timeOut + 1
+                
+            if respFlag:
+                cntFrmOk = cntFrmOk + 1
+                respFlag = 0
+            else:
+                cntFrmTout = cntFrmTout + 1
 
+            tft.text((0, 80), "FrmAck : " + str(cntFrmOk), TFT.GREEN, sysfont, 1)    
+            tft.text((0, 90), "FrmLost: " + str(cntFrmTout), TFT.RED, sysfont, 1)
+            flr = (int)(10000*(cntFrmTout/cntTxFrame))
+            tft.text((0, 100), "FLR: " + str(flr/100) + " %   ", TFT.YELLOW, sysfont, 1)    
+
+        else:
+            tft.text((0, 80), "FrmRx: " + str(cntRxFrame), TFT.GREEN, sysfont, 1)    
+            tft.text((0, 90), "FrmTx: " + str(cntTxFrame), TFT.YELLOW, sysfont, 1)    
+            time.sleep_ms(200)
+                            
+ 
 test_main()
+
+
+
+
