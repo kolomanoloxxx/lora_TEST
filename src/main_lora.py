@@ -3,21 +3,26 @@ from ST7735 import TFT,TFTColor
 from sysfont import sysfont
 from machine import SPI,Pin
 from machine import Pin, Timer, PWM
+from crc import Crc
 import time
 import math
 import gc
+import random
 
 LoRaMaster = 1
 
 cntRxFrame = 0
 cntTxFrame = 0
+crcFrameRxCntOk = 0
+crcFrameRxCntErr = 0
 lineLCD = 0
 respFlag = 0
+dataFrameRx = list((0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15))
 
 # reset do lora RA02 na SX1278
-# dokumentacja chinska z dupy wyjeta
-# brak opisu do sterowania resetem kiedy aktywny i na jaki czas musi byc aktywny zeby wywylac reset tego badziewia
-# eksperymetalnie wydedukowano reset aktywny 0 na min 100 ms kurwa, kurwa, kurwa...chinskie zjeby
+# dokumentacja SX1278 mowi ze stanem aktywnym jest stan niski dla wejscia resetu
+# minimalny czas stanu aktywnego to 100us dajemy z zapasem 200us
+# minimalny czas po zmianie ze stanu aktywnego na nieaktywny na resecie to 5ms dajemy z zapasem 10ms
 loraResetPin = Pin(7, Pin.OUT)
 led = Pin(25, Pin.OUT)
 
@@ -35,9 +40,9 @@ tft.initr()
 tft.rgb(True)
 
 loraResetPin.low()
-time.sleep_ms(100)
+time.sleep_us(200)
 loraResetPin.high()
-time.sleep_ms(100)
+time.sleep_ms(10)
 
 try:
 	spi_lora = SPI(
@@ -62,20 +67,16 @@ lora = LoRa(
     spi_lora,
     cs=Pin(5, Pin.OUT),
     rx=Pin(6, Pin.IN), #receiver IRQ
-    frequency=433.0,
-    bandwidth=250000,
+    frequency=434.0,
+    bandwidth=125000,
     spreading_factor=10,
-    coding_rate=5,
+    coding_rate=8,
 )
 
 # Receive handler
-def handler(x):
-    global cntRxFrame, cntTxFrame, LoRaMaster, respFlag
-    cntRxFrame = cntRxFrame + 1
-    if LoRaMaster == 0:
-        lora.send("Resp->" + str(x))
-        cntTxFrame = cntTxFrame + 1        
-        lora.recv()
+def handler(dataRx):
+    global respFlag, dataFrameRx
+    dataFrameRx = dataRx
     respFlag = 1
 
 def blink(timer):
@@ -199,6 +200,10 @@ def tftprinttest():
     v += sysfont["Height"]
     tft.text((0, v), " seconds.", TFT.WHITE, sysfont)
 
+def randomFrame(data, len):
+    for x in range(len):            
+      data[x] = random.randint(0, 255)
+
 def showBMP():
     f=open('lora.bmp', 'rb')    
     if f.read(2) == b'BM':  #header
@@ -233,14 +238,14 @@ def showBMP():
                         tft._pushcolor(TFTColor(bgr[2],bgr[1],bgr[0]))
     f.close()
 def test_main():
-    global cntRxFrame, cntTxFrame, lineLCD, LoRaMaster, respFlag
+    global cntRxFrame, cntTxFrame, lineLCD, LoRaMaster, respFlag, dataFrameRx, crcFrameRxCntOk, crcFrameRxCntErr
     timer.init(freq=2.5, mode=Timer.PERIODIC, callback=blink)
     showBMP()
     time.sleep_ms(3000) 
     tft.fill(TFT.BLACK)
     tft.text((0, 0), "Test LoRa", TFT.WHITE, sysfont, 1)
-    tft.text((0, 10), "wersja: 1.00", TFT.WHITE, sysfont, 1)
-    tft.text((0, 20), "by JC 2023.08.23", TFT.WHITE, sysfont, 1)
+    tft.text((0, 10), "wersja: 1.01", TFT.WHITE, sysfont, 1)
+    tft.text((0, 20), "by JC 2023.08.24", TFT.WHITE, sysfont, 1)
     tft.text((0, 30), "LoRa SX1278 na SPI0", TFT.WHITE, sysfont, 1)
     tft.text((0, 40), "LCD ST7735 na SPI1", TFT.WHITE, sysfont, 1)
     tft.text((0, 50), "PI PICO 2040", TFT.WHITE, sysfont, 1)
@@ -249,7 +254,6 @@ def test_main():
         tft.text((0, 70), "LoRa Master", TFT.GREEN, sysfont, 1)
     else:
         tft.text((0, 70), "LoRa Slave", TFT.GREEN, sysfont, 1)        
-    time.sleep_ms(5000)
     
     # Set handler
     lora.on_recv(handler)
@@ -259,35 +263,66 @@ def test_main():
     
     cntFrmOk = 0
     cntFrmTout= 0
-
+    dataFrameTx = list((0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15))
+    crcFrameTx = Crc()
+    crcFrameRx = Crc() 
     while(1):
+        
         if LoRaMaster:
             cntTxFrame = cntTxFrame + 1
-
-            lora.send("Req-> " + str(cntTxFrame))
+            randomFrame(dataFrameTx, len(dataFrameTx))
+            crcFrameTx.add_crc8(dataFrameTx, len(dataFrameTx))
+            lora.send(dataFrameTx)
             lora.recv()
-            
             timeOut = 0
             while ((respFlag == 0) and (timeOut < 100)):
                 time.sleep_ms(10)
                 timeOut = timeOut + 1
                 
             if respFlag:
-                cntFrmOk = cntFrmOk + 1
                 respFlag = 0
+                cntRxFrame = cntRxFrame + 1                     
+                if (crcFrameRx.check_crc8(dataFrameRx, len(dataFrameRx))):
+                    crcFrameRxCntOk = crcFrameRxCntOk + 1
+                else:
+                    crcFrameRxCntErr = crcFrameRxCntErr + 1
             else:
                 cntFrmTout = cntFrmTout + 1
 
-            tft.text((0, 80), "FrmAck : " + str(cntFrmOk), TFT.GREEN, sysfont, 1)    
-            tft.text((0, 90), "FrmLost: " + str(cntFrmTout), TFT.RED, sysfont, 1)
+            tft.text((0, 80), "FrmTx: " + str(cntTxFrame), TFT.YELLOW, sysfont, 1)    
+            tft.text((0, 90), "FrmRx: " + str(cntRxFrame), TFT.GREEN, sysfont, 1)    
+            tft.text((0, 100), "CrcOk: " + str(crcFrameRxCntOk), TFT.GREEN, sysfont, 1)    
+            tft.text((0, 110), "CrcEr: " + str(crcFrameRxCntErr), TFT.RED, sysfont, 1)    
+            tft.text((0, 120), "FrmLost: " + str(cntFrmTout), TFT.RED, sysfont, 1)
             flr = (int)(10000*(cntFrmTout/cntTxFrame))
-            tft.text((0, 100), "FLR: " + str(flr/100) + " %   ", TFT.YELLOW, sysfont, 1)    
+            tft.text((0, 130), "FLR: " + str(flr/100) + " %   ", TFT.YELLOW, sysfont, 1)    
+ #           time.sleep_ms(100)
 
         else:
             tft.text((0, 80), "FrmRx: " + str(cntRxFrame), TFT.GREEN, sysfont, 1)    
             tft.text((0, 90), "FrmTx: " + str(cntTxFrame), TFT.YELLOW, sysfont, 1)    
-            time.sleep_ms(200)
-                            
+            tft.text((0, 100), "CrcOk: " + str(crcFrameRxCntOk), TFT.GREEN, sysfont, 1)    
+            tft.text((0, 110), "CrcEr: " + str(crcFrameRxCntErr), TFT.RED, sysfont, 1)
+            if crcFrameRxCntErr + crcFrameRxCntOk > 0:
+                cfr = (int)(10000*(crcFrameRxCntErr/(crcFrameRxCntErr + crcFrameRxCntOk)))
+                tft.text((0, 120), "CFR: " + str(cfr/100) + " %   ", TFT.YELLOW, sysfont, 1)    
+            else:
+                tft.text((0, 120), "CFR: 0,00 %   ", TFT.YELLOW, sysfont, 1)    
+                
+ #           time.sleep_ms(100)
+            if respFlag:
+                respFlag = 0
+                cntRxFrame = cntRxFrame + 1
+                if (crcFrameRx.check_crc8(dataFrameRx, len(dataFrameRx))):
+                    crcFrameRxCntOk = crcFrameRxCntOk + 1                    
+                    randomFrame(dataFrameTx, len(dataFrameTx))
+                    crcFrameTx.add_crc8(dataFrameTx, len(dataFrameTx))
+                    lora.send(dataFrameTx)
+                    lora.recv()
+                    cntTxFrame = cntTxFrame + 1
+                else:
+                    crcFrameRxCntErr = crcFrameRxCntErr + 1                                        
+
  
 test_main()
 

@@ -177,7 +177,7 @@ class LoRa:
         self._write(REG_DETECTION_THRESHOLD, 0x0c if sf == 6 else 0x0a)
         reg2 = self._read(REG_MODEM_CONFIG_2)
         self._write(REG_MODEM_CONFIG_2, (reg2 & 0x0f) | ((sf << 4) & 0xf0))
-	self._write(REG_MODEM_CONFIG_3, 0x08 if (sf>10 and self._bandwidth<250000) else 0x00)
+        self._write(REG_MODEM_CONFIG_3, 0x08 if (sf>10 and self._bandwidth<250000) else 0x00)
 
     def set_bandwidth(self, bw):
         self._bandwidth = bw
@@ -265,3 +265,4 @@ class LoRa:
 
     def _write(self, addr, x):
         self._transfer(addr | 0x80, x)
+
