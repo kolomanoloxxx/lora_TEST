@@ -66,18 +66,20 @@ class LoRa:
         self.sleep()
         self.set_frequency(kw.get('frequency', 433.0))
         self.set_bandwidth(kw.get('bandwidth', 250000))
+        # set auto AGC
+        self._write(REG_MODEM_CONFIG_3, 0x04)
         self.set_spreading_factor(kw.get('spreading_factor', 10))
         self.set_coding_rate(kw.get('coding_rate', 5))
-        self.set_preamble_length(kw.get('preamble_length', 4))
-        self.set_crc(kw.get('crc', False))
+        self.set_preamble_length(kw.get('preamble_length', 64))
+        self.set_crc(kw.get('crc', True))
         # set LNA boost
-        self._write(REG_LNA, self._read(REG_LNA) | 0x03)
-        # set auto AGC
-        self._write(REG_MODEM_CONFIG_3, 0x00)
+#        self._write(REG_LNA, self._read(REG_LNA) | 0x03)
+#        self._write(REG_LNA, self._read(REG_LNA) | 0xC0)
+        self._write(REG_LNA, self._read(REG_LNA) | 0x00)
         self.set_tx_power(kw.get('tx_power', 24))
         self._implicit = kw.get('implicit', False)
         self.set_implicit(self._implicit)
-        self.set_sync_word(kw.get('sync_word', 0x12))
+        self.set_sync_word(kw.get('sync_word', 0x75))
         self._on_recv = kw.get('on_recv', None)
         self._write(REG_FIFO_TX_BASE_ADDR, TX_BASE_ADDR)
         self._write(REG_FIFO_RX_BASE_ADDR, RX_BASE_ADDR)
@@ -171,6 +173,7 @@ class LoRa:
         self._write(REG_FRF_LSB, x & 0xff)
 
     def set_spreading_factor(self, sf):
+        self._sf = sf        
         if sf < 6 or sf > 12:
             raise ValueError('Spreading factor must be between 6-12')
         self._write(REG_DETECTION_OPTIMIZE, 0xc5 if sf == 6 else 0xc3)
@@ -192,11 +195,13 @@ class LoRa:
 
     def set_coding_rate(self, denom):
         denom = min(max(denom, 5), 8)
+        self._cr = denom
         cr = denom - 4
         reg1 = self._read(REG_MODEM_CONFIG_1)
         self._write(REG_MODEM_CONFIG_1, (reg1 & 0xf1) | (cr << 1))
 
     def set_preamble_length(self, n):
+        self._pl = n
         self._write(REG_PREAMBLE_MSB, (n >> 8) & 0xff)
         self._write(REG_PREAMBLE_LSB, (n >> 0) & 0xff)
 
@@ -209,6 +214,7 @@ class LoRa:
         self._write(REG_MODEM_CONFIG_2, config)
 
     def set_sync_word(self, sw):
+        self._sw = sw
         self._write(REG_SYNC_WORD, sw) 
 
     def set_implicit(self, implicit=False):
