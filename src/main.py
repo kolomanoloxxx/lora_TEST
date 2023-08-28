@@ -10,6 +10,12 @@ import gc
 import random
 import os
 
+# definicje stalych znakowych uzywanych wielokrotnie
+TEST_VER_STR = "Test LoRa ver.:1.03"
+MASTER_STR = "LoRa Master"
+SLAVE_STR = "LoRa Slave"
+LOG_SIZE_KB = 128
+
 # parametry dla LORA Ra-02:
 # zakrse czestotliwosci: 410..525MHz
 # max transmit power 18dBm +-1dBm
@@ -21,10 +27,13 @@ LoRaMaster = 1
 
 cntRxFrame = 0
 cntTxFrame = 0
+cntFrmTout = 0
 crcFrameRxCntOk = 0
 crcFrameRxCntErr = 0
 lineLCD = 0
 respFlag = 0
+logNr = 0
+
 dataFrameRx = bytearray(16)
 # reset do lora RA02 na SX1278
 # dokumentacja SX1278 mowi ze stanem aktywnym jest stan niski dla wejscia resetu
@@ -47,7 +56,7 @@ tft.initr()
 tft.rgb(True)
 
 rtc = machine.RTC()
-rtc.datetime((2023, 8, 27, 0, 00, 00, 0, 0))
+rtc.datetime((2023, 8, 28, 0, 00, 00, 0, 0))
 
 # tododu srududu do zrobienia ustawianie daty i czasu
 
@@ -76,14 +85,14 @@ except Exception as e:
 
 # Setup LoRa
 lora = LoRa(
-    spi_lora,
-    cs=Pin(5, Pin.OUT),
-    rx=Pin(6, Pin.IN), #receiver IRQ
-    frequency=433,
-    bandwidth=250000,
-    spreading_factor=12,
-    coding_rate=8,
-)
+                spi_lora,
+                cs=Pin(5, Pin.OUT),
+                rx=Pin(6, Pin.IN), #receiver IRQ
+                frequency=433,
+                bandwidth=250000,
+                spreading_factor=12,
+                coding_rate=8,
+            )
 
 # Receive handler
 def handler(dataRx):
@@ -248,24 +257,74 @@ def showBMP():
                         bgr = f.read(3)
                         tft._pushcolor(TFTColor(bgr[2],bgr[1],bgr[0]))
     f.close()
+
+def time_lcd(datetime):
+    if datetime[4] == 0:
+        hours = "00"
+    elif datetime[4] < 10:
+        hours = "0" + str(datetime[4])
+    else:
+        hours = str(datetime[4])
+
+    if datetime[5] == 0:
+        minutes = "00"
+    elif datetime[5] < 10:
+        minutes = "0" + str(datetime[5])
+    else:
+        minutes = str(datetime[5])
+
+    if datetime[6] == 0:
+        seconds = "00"
+    elif datetime[6] < 10:
+        seconds = "0" + str(datetime[6])
+    else:
+        seconds = str(datetime[6])
+    tft.text((0, 20), "{}.{}.{} {}:{}:{}".format(datetime[2], datetime[1], datetime[0], hours, minutes, seconds), TFT.WHITE, sysfont, 1)    
+
+def stat_lcd():
+    tft.text((0, 30), "FrmTx: " + str(cntTxFrame), TFT.YELLOW, sysfont, 1)    
+    tft.text((0, 40), "FrmRx: " + str(cntRxFrame), TFT.GREEN, sysfont, 1)    
+    tft.text((0, 50), "CrcOk: " + str(crcFrameRxCntOk), TFT.GREEN, sysfont, 1)    
+    tft.text((0, 60), "CrcEr: " + str(crcFrameRxCntErr), TFT.RED, sysfont, 1)    
+    if LoRaMaster:
+        tft.text((0, 70), "FrmLost: " + str(cntFrmTout), TFT.RED, sysfont, 1)
+        flr = (int)(10000*(cntFrmTout/cntTxFrame))
+        tft.text((0, 80), "FLR: " + str(flr/100) + " %   ", TFT.YELLOW, sysfont, 1)
+    else:
+        if crcFrameRxCntErr + crcFrameRxCntOk > 0:
+            cfr = (int)(10000*(crcFrameRxCntErr/(crcFrameRxCntErr + crcFrameRxCntOk)))
+            tft.text((0, 70), "CFR: " + str(cfr/100) + " %   ", TFT.YELLOW, sysfont, 1)    
+        else:
+            tft.text((0, 70), "CFR: 0,00 %   ", TFT.YELLOW, sysfont, 1)
+    tft.text((0, 90), "RSSI: " + str(lora.get_rssi()) + " dBm   ", TFT.WHITE, sysfont, 1)    
+    tft.text((0, 100), "SNR : " + str(lora.get_snr()) + " dB    ", TFT.WHITE, sysfont, 1)       
+    tft.text((0, 110), "Frq : " + str(lora._frequency) + " MHz", TFT.WHITE, sysfont, 1)       
+    tft.text((0, 120), "BW  : " + str(lora._bandwidth) + " Hz", TFT.WHITE, sysfont, 1)       
+    tft.text((0, 130), "SF  : " + str(lora._sf), TFT.WHITE, sysfont, 1)       
+    tft.text((0, 140), "CR  : " + str(lora._cr), TFT.WHITE, sysfont, 1)       
+    tft.text((0, 150), "PL  : " + str(lora._pl), TFT.WHITE, sysfont, 1)
+        
+def write_log(f, datetime):
+        f.write("{}.{}.{} {}:{}:{}".format(datetime[2], datetime[1], datetime[0], datetime[4], datetime[5], datetime[6]) + ", FrmTx: " + str(cntTxFrame) + ", FrmRx: " + str(cntRxFrame) + " CrcOk: " + str(crcFrameRxCntOk) + ", CrcEr: " + str(crcFrameRxCntErr) + ", FrmLost: " + str(cntFrmTout) + ", RSSI: " + str(lora.get_rssi()) + " dBm" + ", SNR : " + str(lora.get_snr()) + " dB\n")
+
 def test_main():
-    global cntRxFrame, cntTxFrame, lineLCD, LoRaMaster, respFlag, dataFrameRx, crcFrameRxCntOk, crcFrameRxCntErr
-    print("LoRa Test")
-    logNr = 0
+    global cntRxFrame, cntTxFrame, lineLCD, LoRaMaster, respFlag, dataFrameRx, crcFrameRxCntOk, crcFrameRxCntErr, logNr
+    print(TEST_VER_STR)
+    print(os.uname())
     fileName = "log{}.txt".format(logNr)
     f = open(fileName, 'wt')
     timer.init(freq=2.5, mode=Timer.PERIODIC, callback=blink)
     showBMP()
     time.sleep_ms(3000) 
     tft.fill(TFT.BLACK)   
-    f.write("Test LoRa ver.:1.02\n")
-    tft.text((0, 0), "Test LoRa ver.:1.02", TFT.WHITE, sysfont, 1)
+    f.write(str(TEST_VER_STR + "\n"))
+    tft.text((0, 0), TEST_VER_STR, TFT.WHITE, sysfont, 1)
     if LoRaMaster:
-        f.write("LoRa Master\n")
-        tft.text((0, 10), "LoRa Master", TFT.GREEN, sysfont, 1)
+        f.write(str(MASTER_STR + "\n"))
+        tft.text((0, 10), MASTER_STR, TFT.GREEN, sysfont, 1)
     else:
-        f.write("LoRa Slave\n")
-        tft.text((0, 10), "LoRa Slave", TFT.GREEN, sysfont, 1)        
+        f.write(str(SLAVE_STR + "\n"))
+        tft.text((0, 10), SLAVE_STR, TFT.GREEN, sysfont, 1)        
  
     f.write("Frequecy : " + str(lora._frequency) + " MHz" + ", Bandwidth : " + str(lora._bandwidth) + " Hz" + ", SF(spread factor): " + str(lora._sf) + ", CR(Coding Rate): " + str(lora._cr) + ", PL(Preamble Length): " + str(lora._pl) + "\n")
     # Set handler
@@ -287,7 +346,7 @@ def test_main():
             lora.send(dataFrameTx)
             lora.recv()
             timeOut = 0
-            while ((respFlag == 0) and (timeOut < 1000)):
+            while ((respFlag == 0) and (timeOut < 500)):
                 time.sleep_ms(10)
                 timeOut = timeOut + 1
                 
@@ -301,55 +360,24 @@ def test_main():
             else:
                 cntFrmTout = cntFrmTout + 1
             now = rtc.datetime()
-            
-            tft.text((0, 20), "{}.{}.{} {}:{}:{}".format(now[2], now[1], now[0], now[4], now[5], now[6]), TFT.WHITE, sysfont, 1)    
-            tft.text((0, 30), "FrmTx: " + str(cntTxFrame), TFT.YELLOW, sysfont, 1)    
-            tft.text((0, 40), "FrmRx: " + str(cntRxFrame), TFT.GREEN, sysfont, 1)    
-            tft.text((0, 50), "CrcOk: " + str(crcFrameRxCntOk), TFT.GREEN, sysfont, 1)    
-            tft.text((0, 60), "CrcEr: " + str(crcFrameRxCntErr), TFT.RED, sysfont, 1)    
-            tft.text((0, 70), "FrmLost: " + str(cntFrmTout), TFT.RED, sysfont, 1)
-            flr = (int)(10000*(cntFrmTout/cntTxFrame))
-            tft.text((0, 80), "FLR: " + str(flr/100) + " %   ", TFT.YELLOW, sysfont, 1)
-            
-            tft.text((0, 90), "RSSI: " + str(lora.get_rssi()) + " dBm   ", TFT.WHITE, sysfont, 1)    
-            tft.text((0, 100), "SNR : " + str(lora.get_snr()) + " dB    ", TFT.WHITE, sysfont, 1)       
-            tft.text((0, 110), "Frq : " + str(lora._frequency) + " MHz", TFT.WHITE, sysfont, 1)       
-            tft.text((0, 120), "BW  : " + str(lora._bandwidth) + " Hz", TFT.WHITE, sysfont, 1)       
-            tft.text((0, 130), "SF  : " + str(lora._sf), TFT.WHITE, sysfont, 1)       
-            tft.text((0, 140), "CR  : " + str(lora._cr), TFT.WHITE, sysfont, 1)       
-            tft.text((0, 150), "PL  : " + str(lora._pl), TFT.WHITE, sysfont, 1)
-
-            f.write("{}.{}.{} {}:{}:{}".format(now[2], now[1], now[0], now[4], now[5], now[6]) + ", FrmTx: " + str(cntTxFrame) + ", FrmRx: " + str(cntRxFrame) + " CrcOk: " + str(crcFrameRxCntOk) + ", CrcEr: " + str(crcFrameRxCntErr) + ", FrmLost: " + str(cntFrmTout) + ", FLR: " + str(flr/100) + " %" + ", RSSI: " + str(lora.get_rssi()) + " dBm" + ", SNR : " + str(lora.get_snr()) + " dB\n")
+            time_lcd(now)
+            stat_lcd()
+            write_log(f, now)
             f.close()
             file_stat = os.stat(fileName)
             f = open(fileName, 'at')
-            if ((int)(file_stat[6])) > 128*1024:  # dzielimy pliki z logami na 128kB
+            if ((int)(file_stat[6])) > LOG_SIZE_KB*1024:  # maksymalny rozmiar pliku okolo: LOG_SIZE_KB*kB
                 f.close()
                 logNr = logNr + 1
-                if logNr > 7: # max 8 * 128kB i nadpisanie
+                if logNr > 7: # pliki z logami od log0..log7 i nadpisanie
                     logNr = 0
                 fileName = "log{}.txt".format(logNr)
-                f = open(fileName, 'wt')            
+                f = open(fileName, 'wt')
+               
         else:
-            tft.text((0, 20), str(rtc.datetime()), TFT.WHITE, sysfont, 1)    
-            tft.text((0, 30), "FrmTx: " + str(cntTxFrame), TFT.YELLOW, sysfont, 1)    
-            tft.text((0, 40), "FrmRx: " + str(cntRxFrame), TFT.GREEN, sysfont, 1)    
-            tft.text((0, 50), "CrcOk: " + str(crcFrameRxCntOk), TFT.GREEN, sysfont, 1)    
-            tft.text((0, 60), "CrcEr: " + str(crcFrameRxCntErr), TFT.RED, sysfont, 1)
-            if crcFrameRxCntErr + crcFrameRxCntOk > 0:
-                cfr = (int)(10000*(crcFrameRxCntErr/(crcFrameRxCntErr + crcFrameRxCntOk)))
-                tft.text((0, 70), "CFR: " + str(cfr/100) + " %   ", TFT.YELLOW, sysfont, 1)    
-            else:
-                tft.text((0, 70), "CFR: 0,00 %   ", TFT.YELLOW, sysfont, 1)
-                
-            tft.text((0, 90), "RSSI: " + str(lora.get_rssi()) + " dBm    ", TFT.WHITE, sysfont, 1)    
-            tft.text((0, 100), "SNR : " + str(lora.get_snr()) + " dB    ", TFT.WHITE, sysfont, 1)       
-            tft.text((0, 110), "Frq : " + str(lora._frequency) + " MHz", TFT.WHITE, sysfont, 1)       
-            tft.text((0, 120), "BW  : " + str(lora._bandwidth) + " Hz", TFT.WHITE, sysfont, 1)       
-            tft.text((0, 130), "SF  : " + str(lora._sf), TFT.WHITE, sysfont, 1)       
-            tft.text((0, 140), "CR  : " + str(lora._cr), TFT.WHITE, sysfont, 1)       
-            tft.text((0, 150), "PL  : " + str(lora._pl), TFT.WHITE, sysfont, 1)       
-                
+            now = rtc.datetime()
+            time_lcd(now)
+            stat_lcd()  
             if respFlag:
                 respFlag = 0
                 cntRxFrame = cntRxFrame + 1
@@ -361,20 +389,19 @@ def test_main():
                     lora.recv()
                     cntTxFrame = cntTxFrame + 1           
                 else:
-                    crcFrameRxCntErr = crcFrameRxCntErr + 1
-                    
-                f.write("{}.{}.{} {}:{}:{}".format(now[2], now[1], now[0], now[4], now[5], now[6]) + ", FrmTx: " + str(cntTxFrame) + ", FrmRx: " + str(cntRxFrame) + " CrcOk: " + str(crcFrameRxCntOk) + ", CrcEr: " + str(crcFrameRxCntErr) + ", RSSI: " + str(lora.get_rssi()) + " dBm" + ", SNR : " + str(lora.get_snr()) + " dB\n")
+                    crcFrameRxCntErr = crcFrameRxCntErr + 1    
+                write_log(f, now)
                 f.close()
                 file_stat = os.stat(fileName)
                 f = open(fileName, 'at')
-                if ((int)(file_stat[6])) > 128*1024:  # dzielimy pliki z logami na 128kB
+                if ((int)(file_stat[6])) > LOG_SIZE_KB*1024:  # maksymalny rozmiar pliku okolo: LOG_SIZE_KB*kB
                     f.close()
                     logNr = logNr + 1
-                    if logNr > 7: # max 8 * 128kB i nadpisanie
+                    if logNr > 7: # pliki z logami od log0..log7 i nadpisanie
                         logNr = 0
                     fileName = "log{}.txt".format(logNr)
-                    f = open(fileName, 'wt')          
-                    
+                    f = open(fileName, 'wt')            
+ 
 test_main()
 
 

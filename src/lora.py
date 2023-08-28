@@ -66,8 +66,6 @@ class LoRa:
         self.sleep()
         self.set_frequency(kw.get('frequency', 433.0))
         self.set_bandwidth(kw.get('bandwidth', 250000))
-        # set auto AGC
-        self._write(REG_MODEM_CONFIG_3, 0x04)
         self.set_spreading_factor(kw.get('spreading_factor', 10))
         self.set_coding_rate(kw.get('coding_rate', 5))
         self.set_preamble_length(kw.get('preamble_length', 64))
@@ -76,6 +74,9 @@ class LoRa:
 #        self._write(REG_LNA, self._read(REG_LNA) | 0x03)
 #        self._write(REG_LNA, self._read(REG_LNA) | 0xC0)
         self._write(REG_LNA, self._read(REG_LNA) | 0x00)
+        # set auto AGC
+#        self._write(REG_MODEM_CONFIG_3, 0x00)
+        self._write(REG_MODEM_CONFIG_3, 0x04)
         self.set_tx_power(kw.get('tx_power', 24))
         self._implicit = kw.get('implicit', False)
         self.set_implicit(self._implicit)
