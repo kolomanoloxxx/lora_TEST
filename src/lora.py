@@ -66,17 +66,19 @@ class LoRa:
         self.sleep()
         self.set_frequency(kw.get('frequency', 433.0))
         self.set_bandwidth(kw.get('bandwidth', 250000))
-        self.set_spreading_factor(kw.get('spreading_factor', 10))
         self.set_coding_rate(kw.get('coding_rate', 5))
         self.set_preamble_length(kw.get('preamble_length', 64))
         self.set_crc(kw.get('crc', True))
         # set LNA boost
-#        self._write(REG_LNA, self._read(REG_LNA) | 0x03)
-#        self._write(REG_LNA, self._read(REG_LNA) | 0xC0)
-        self._write(REG_LNA, self._read(REG_LNA) | 0x00)
+#        self._write(REG_LNA, self._read(REG_LNA) | 0x03)   # rsv Gain, Boost on 150% normy
+#        self._write(REG_LNA, self._read(REG_LNA) | 0xC0)   # min Gain, Boost off
+#        self._write(REG_LNA, self._read(REG_LNA) | 0x20)   # max Gain, Boost off
+        self._write(REG_LNA, self._read(REG_LNA) | 0x23)   # max Gain, Boost on 150% normy
+#        self._write(REG_LNA, self._read(REG_LNA) | 0x00)   # rsv Gain, Boost off
         # set auto AGC
-#        self._write(REG_MODEM_CONFIG_3, 0x00)
-        self._write(REG_MODEM_CONFIG_3, 0x04)
+#        self._write(REG_MODEM_CONFIG_3, 0x00)  # Gain by register REG_LNA
+        self._write(REG_MODEM_CONFIG_3, 0x04)  # Gain by AGC
+        self.set_spreading_factor(kw.get('spreading_factor', 12))
         self.set_tx_power(kw.get('tx_power', 24))
         self._implicit = kw.get('implicit', False)
         self.set_implicit(self._implicit)
@@ -181,7 +183,8 @@ class LoRa:
         self._write(REG_DETECTION_THRESHOLD, 0x0c if sf == 6 else 0x0a)
         reg2 = self._read(REG_MODEM_CONFIG_2)
         self._write(REG_MODEM_CONFIG_2, (reg2 & 0x0f) | ((sf << 4) & 0xf0))
-        self._write(REG_MODEM_CONFIG_3, 0x08 if (sf>10 and self._bandwidth<250000) else 0x00)
+        reg3 = self._read(REG_MODEM_CONFIG_3)
+        self._write(REG_MODEM_CONFIG_3, (reg3 |0x08) if (sf>10 and self._bandwidth<250000) else (reg3 & 0xF7))
 
     def set_bandwidth(self, bw):
         self._bandwidth = bw
