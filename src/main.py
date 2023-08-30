@@ -11,10 +11,12 @@ import random
 import os
 
 # definicje stalych znakowych uzywanych wielokrotnie
-TEST_VER_STR = "Test LoRa ver.:1.04"
+TEST_VER_STR = "Test LoRa ver.:1.05"
 MASTER_STR = "LoRa Master"
-SLAVE_STR = "LoRa Slave"
-LOG_SIZE_KB = 128
+SLAVE_STR = "LoRa Slave" 
+LOG_SIZE_KB = 128                       # rozmiar pliku w kB z logiem parametrow lacznosci
+LOG_FILE_MAX = 7                        # ilosc tworzonych plikow logow przed nadpisaniem, start numeracji od 0
+OSC_PPM = 0                             # temperaturowy wspolczynnik zmiany czestotliwosci z danych katalogowych kwarcu, wartosc z zakresu: -127..+127
 
 # definicje czasow opoznienia oczekiwania na ramke
 # wartosc razy 10ms daje okres czasu 
@@ -112,6 +114,7 @@ lora = LoRa(
                 bandwidth=7800,
                 spreading_factor=8,
                 coding_rate=8,
+                ppm_cor=(0xFF&OSC_PPM),
             )
 
 # Receive handler
@@ -347,9 +350,7 @@ def test_main():
         tft.text((0, 10), SLAVE_STR, TFT.GREEN, sysfont, 1)        
  
     f.write("Frequecy : " + str(lora._frequency) + " MHz" + ", Bandwidth : " + str(lora._bandwidth) + " Hz" + ", SF(spread factor): " + str(lora._sf) + ", CR(Coding Rate): " + str(lora._cr) + ", PL(Preamble Length): " + str(lora._pl) + "\n")
-    # Set handler
-    lora.on_recv(handler)
-    # Put module in recv mode
+    lora.on_recv(handler)     # Set handler
     if LoRaMaster == 0:
         lora.recv()
     cntFrmOk = 0
@@ -369,16 +370,7 @@ def test_main():
             while ((respFlag == 0) and (timeOut < TIME_OUT_7800_8_8)):
                 time.sleep_ms(10)
                 timeOut = timeOut + 1
-                
-            if respFlag:
-                respFlag = 0
-                cntRxFrame = cntRxFrame + 1
-                if (crcFrameRx.check_crc8(dataFrameRx, len(dataFrameRx))):
-                    crcFrameRxCntOk = crcFrameRxCntOk + 1
-                else:
-                    crcFrameRxCntErr = crcFrameRxCntErr + 1
-            else:
-                cntFrmTout = cntFrmTout + 1
+
             now = rtc.datetime()
             time_lcd(now)
             stat_lcd()
@@ -389,11 +381,24 @@ def test_main():
             if ((int)(file_stat[6])) > LOG_SIZE_KB*1024:  # maksymalny rozmiar pliku okolo: LOG_SIZE_KB*kB
                 f.close()
                 logNr = logNr + 1
-                if logNr > 7: # pliki z logami od log0..log7 i nadpisanie
+                if logNr > LOG_FILE_MAX: # pliki z logami od log0..log<LOG_FILE_MAX> i nadpisanie
                     logNr = 0
                 fileName = "log{}.txt".format(logNr)
                 f = open(fileName, 'wt')
-               
+
+            if respFlag:
+                respFlag = 0
+                cntRxFrame = cntRxFrame + 1
+                if (crcFrameRx.check_crc8(dataFrameRx, len(dataFrameRx))):
+                    crcFrameRxCntOk = crcFrameRxCntOk + 1
+                else:
+                    crcFrameRxCntErr = crcFrameRxCntErr + 1
+
+                new_freq = lora.freq_sync_rx()  # wyznaczamy czestotliwosci z poprawka wyliczona po odebranej ramce
+                lora.sleep()
+                lora.set_frequency(new_freq)                  
+            else:
+                cntFrmTout = cntFrmTout + 1               
         else:
             now = rtc.datetime()
             time_lcd(now)
@@ -417,7 +422,7 @@ def test_main():
                 if ((int)(file_stat[6])) > LOG_SIZE_KB*1024:  # maksymalny rozmiar pliku okolo: LOG_SIZE_KB*kB
                     f.close()
                     logNr = logNr + 1
-                    if logNr > 7: # pliki z logami od log0..log7 i nadpisanie
+                    if logNr > LOG_FILE_MAX: # pliki z logami od log0..log<LOG_FILE_MAX> i nadpisanie
                         logNr = 0
                     fileName = "log{}.txt".format(logNr)
                     f = open(fileName, 'wt')            

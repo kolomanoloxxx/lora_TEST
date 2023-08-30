@@ -31,6 +31,10 @@ REG_PREAMBLE_MSB = 0x20
 REG_PREAMBLE_LSB = 0x21
 REG_PAYLOAD_LENGTH = 0x22
 REG_MODEM_CONFIG_3 = 0x26
+REG_MODEM_PPM_COR = 0x27
+REG_MODEM_FEI_MSB = 0x28
+REG_MODEM_FEI_MID = 0x29
+REG_MODEM_FEI_LSB = 0x2A
 REG_DETECTION_OPTIMIZE = 0x31
 REG_DETECTION_THRESHOLD = 0x37
 REG_SYNC_WORD = 0x39
@@ -84,6 +88,7 @@ class LoRa:
         self.set_implicit(self._implicit)
         self.set_sync_word(kw.get('sync_word', 0x75))
         self._on_recv = kw.get('on_recv', None)
+        self.set_ppm_correction(kw.get('ppm_cor', 0x00))
         self._write(REG_FIFO_TX_BASE_ADDR, TX_BASE_ADDR)
         self._write(REG_FIFO_RX_BASE_ADDR, RX_BASE_ADDR)
         self.standby()
@@ -153,6 +158,15 @@ class LoRa:
         self._write(REG_OP_MODE, previousOpMode)
         return (temperatura + 10)
 
+    def get_efi(self):
+        msb = self._read(REG_MODEM_FEI_MSB)
+        mid = self._read(REG_MODEM_FEI_MID)
+        lsb = self._read(REG_MODEM_FEI_LSB)        
+        efi = ((msb<<16)|(mid<<8)|lsb)
+        if (efi & 0x80000):
+            efi = (efi & 0x7FFFF) - 0x80000
+        return (efi)
+
     def standby(self):
         self._write(REG_OP_MODE, MODE_LORA | MODE_STDBY)
 
@@ -174,6 +188,10 @@ class LoRa:
         self._write(REG_FRF_MSB, (x >> 16) & 0xff)
         self._write(REG_FRF_MID, (x >> 8) & 0xff)
         self._write(REG_FRF_LSB, x & 0xff)
+
+    def set_ppm_correction(self, ppm_cor):
+        self._ppm_cor = ppm_cor
+        self._write(REG_MODEM_PPM_COR, ppm_cor)
 
     def set_spreading_factor(self, sf):
         self._sf = sf        
@@ -221,6 +239,12 @@ class LoRa:
         self._sw = sw
         self._write(REG_SYNC_WORD, sw) 
 
+    def freq_sync_rx(self):
+        efi = self.get_efi()
+        ferror = ((efi*16777216)/32000000)*((self._bandwidth/1000)/500)
+        new_freq = (1000000*self._frequency - ferror)/1000000
+        return new_freq
+    
     def set_implicit(self, implicit=False):
         if self._implicit != implicit:
             self._implicit = implicit
