@@ -11,12 +11,12 @@ import random
 import os
 
 # definicje stalych znakowych uzywanych wielokrotnie
-TEST_VER_STR = "Test LoRa ver.:1.05"
+TEST_VER_STR = "Test LoRa ver.:1.06"
 MASTER_STR = "LoRa Master"
 SLAVE_STR = "LoRa Slave" 
 LOG_SIZE_KB = 128                       # rozmiar pliku w kB z logiem parametrow lacznosci
 LOG_FILE_MAX = 7                        # ilosc tworzonych plikow logow przed nadpisaniem, start numeracji od 0
-OSC_PPM = 0                             # temperaturowy wspolczynnik zmiany czestotliwosci z danych katalogowych kwarcu, wartosc z zakresu: -127..+127
+OSC_PPM = 100                           # temperaturowy wspolczynnik zmiany czestotliwosci z danych katalogowych kwarcu, wartosc z zakresu: -127..+127
 
 # definicje czasow opoznienia oczekiwania na ramke
 # wartosc razy 10ms daje okres czasu 
@@ -52,7 +52,6 @@ cntTxFrame = 0
 cntFrmTout = 0
 crcFrameRxCntOk = 0
 crcFrameRxCntErr = 0
-lineLCD = 0
 respFlag = 0
 logNr = 0
 
@@ -78,7 +77,7 @@ tft.initr()
 tft.rgb(True)
 
 rtc = machine.RTC()
-rtc.datetime((2023, 8, 29, 0, 00, 00, 0, 0))
+rtc.datetime((2023, 8, 31, 0, 00, 00, 0, 0))
 
 # tododu srududu do zrobienia ustawianie daty i czasu
 
@@ -105,6 +104,12 @@ except Exception as e:
 		spi_lora.deinit()
 		spi_LORA = None
 
+# w Pytonie brak typu signet char jest signet int wiec trza kombinowac jak za komuny bylo lepiej nie mowic
+if OSC_PPM < 0:
+    ppm_cor_schar = 0x80 | (0xFF & (-OSC_PPM))   
+else:
+    ppm_cor_schar = 0xFF & OSC_PPM
+
 # Setup LoRa
 lora = LoRa(
                 spi_lora,
@@ -114,7 +119,7 @@ lora = LoRa(
                 bandwidth=7800,
                 spreading_factor=8,
                 coding_rate=8,
-                ppm_cor=(0xFF&OSC_PPM),
+                ppm_cor=ppm_cor_schar,
             )
 
 # Receive handler
@@ -328,10 +333,10 @@ def stat_lcd():
     tft.text((0, 150), "PL  : " + str(lora._pl), TFT.WHITE, sysfont, 1)
         
 def write_log(f, datetime):
-        f.write("{}.{}.{} {}:{}:{}".format(datetime[2], datetime[1], datetime[0], datetime[4], datetime[5], datetime[6]) + ", FrmTx: " + str(cntTxFrame) + ", FrmRx: " + str(cntRxFrame) + " CrcOk: " + str(crcFrameRxCntOk) + ", CrcEr: " + str(crcFrameRxCntErr) + ", FrmLost: " + str(cntFrmTout) + ", RSSI: " + str(lora.get_rssi()) + " dBm" + ", SNR : " + str(lora.get_snr()) + " dB\n")
+        f.write("{}.{}.{} {}:{}:{}".format(datetime[2], datetime[1], datetime[0], datetime[4], datetime[5], datetime[6]) + ", Frequecy : {:.6f}".format(lora._frequency) + " MHz" +", FrmTx: " + str(cntTxFrame) + ", FrmRx: " + str(cntRxFrame) + " CrcOk: " + str(crcFrameRxCntOk) + ", CrcEr: " + str(crcFrameRxCntErr) + ", FrmLost: " + str(cntFrmTout) + ", RSSI: " + str(lora.get_rssi()) + " dBm" + ", SNR : " + str(lora.get_snr()) + " dB\n")
 
 def test_main():
-    global cntRxFrame, cntTxFrame, lineLCD, LoRaMaster, respFlag, dataFrameRx, crcFrameRxCntOk, crcFrameRxCntErr, logNr, cntFrmTout
+    global cntRxFrame, cntTxFrame, LoRaMaster, respFlag, dataFrameRx, crcFrameRxCntOk, crcFrameRxCntErr, logNr, cntFrmTout
     print(TEST_VER_STR)
     print(os.uname())
     fileName = "log{}.txt".format(logNr)
@@ -396,7 +401,7 @@ def test_main():
 
                 new_freq = lora.freq_sync_rx()  # wyznaczamy czestotliwosci z poprawka wyliczona po odebranej ramce
                 lora.sleep()
-                lora.set_frequency(new_freq)                  
+                lora.set_frequency(new_freq)                
             else:
                 cntFrmTout = cntFrmTout + 1               
         else:
