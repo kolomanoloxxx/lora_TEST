@@ -9,9 +9,10 @@ import math
 import gc
 import random
 import os
+import menu
 
 # definicje stalych znakowych uzywanych wielokrotnie
-TEST_VER_STR = "Test LoRa ver.:1.06"
+TEST_VER_STR = "Test LoRa ver.:1.08"
 MASTER_STR = "LoRa Master"
 SLAVE_STR = "LoRa Slave" 
 LOG_SIZE_KB = 128                       # rozmiar pliku w kB z logiem parametrow lacznosci
@@ -20,23 +21,25 @@ OSC_PPM = 100                           # temperaturowy wspolczynnik zmiany czes
 
 # definicje czasow opoznienia oczekiwania na ramke
 # wartosc razy 10ms daje okres czasu 
-TIME_OUT_500000_12_8 = 150   # 1500 msec -- ok
-TIME_OUT_250000_12_8 = 300   # 3000 msec -- ok
-TIME_OUT_125000_12_8 = 600   # 6000 msec -- ok
-TIME_OUT_62500_12_8  = 1200  # 12000 msec -- ok
-TIME_OUT_41700_12_8  = 1800  # 18000 msec -- ok
-TIME_OUT_31250_12_8  = 2400  # 34000 msec -- ok
-TIME_OUT_20800_12_8  = 3600  # 36000 msec -- slabo
-TIME_OUT_15600_12_8  = 4800  # 48000 msec -- bardzo slabo
-TIME_OUT_10400_12_8  = 7200  # 72000 msec -- nie dziala
-TIME_OUT_7800_12_8   = 9600  # 96000 msec -- nie dziala
+TIME_OUT_500000_12_8 = 200   # 2000 msec -- ok
+TIME_OUT_250000_12_8 = 400   # 4000 msec -- ok
+TIME_OUT_125000_12_8 = 800   # 8000 msec -- ok
+TIME_OUT_62500_12_8  = 1600  # 16000 msec -- ok
+TIME_OUT_41700_12_8  = 2400  # 24000 msec -- ok
+TIME_OUT_31250_12_8  = 3200  # 32000 msec -- ok
+TIME_OUT_20800_12_8  = 4800  # 48000 msec -- slabo
+TIME_OUT_15600_12_8  = 6400  # 64000 msec -- bardzo slabo
+TIME_OUT_10400_12_8  = 9600  # 96000 msec -- nie dziala
+TIME_OUT_7800_12_8   = 12800 # 128000 msec -- nie dziala
 
-TIME_OUT_7800_7_5    = 300   # 3000 msec -- ok
-TIME_OUT_7800_7_8    = 300   # 3000 msec -- ok
-TIME_OUT_7800_8_8    = 600   # 6000 msec -- ok
-TIME_OUT_7800_9_8    = 1200  # 12000 msec -- slabo
-TIME_OUT_7800_10_8   = 2400  # 24000 msec -- bardzo slabo
-TIME_OUT_7800_11_8   = 4800  # 48000 msec -- nie dziala
+TIME_OUT_250000_7_8 = 15   # 150 msec -- ok
+
+TIME_OUT_7800_7_5    = 400   # 4000 msec -- ok
+TIME_OUT_7800_7_8    = 400   # 4000 msec -- ok
+TIME_OUT_7800_8_8    = 800   # 8000 msec -- ok
+TIME_OUT_7800_9_8    = 1600  # 16000 msec -- slabo
+TIME_OUT_7800_10_8   = 3200  # 32000 msec -- bardzo slabo
+TIME_OUT_7800_11_8   = 6400  # 64000 msec -- nie dziala
 
 # parametry dla LORA Ra-02:
 # zakrse czestotliwosci: 410..525MHz
@@ -77,7 +80,7 @@ tft.initr()
 tft.rgb(True)
 
 rtc = machine.RTC()
-rtc.datetime((2023, 8, 31, 0, 00, 00, 0, 0))
+rtc.datetime((2023, 9, 1, 0, 00, 00, 0, 0))
 
 # tododu srududu do zrobienia ustawianie daty i czasu
 
@@ -115,9 +118,9 @@ lora = LoRa(
                 spi_lora,
                 cs=Pin(5, Pin.OUT),
                 rx=Pin(6, Pin.IN), #receiver IRQ
-                frequency=433,
-                bandwidth=7800,
-                spreading_factor=8,
+                frequency=412,
+                bandwidth=125000,
+                spreading_factor=12,
                 coding_rate=8,
                 ppm_cor=ppm_cor_schar,
             )
@@ -125,8 +128,10 @@ lora = LoRa(
 # Receive handler
 def handler(dataRx):
     global respFlag, dataFrameRx
+    tft.fillcircle((80, 13), 4, TFT.GREEN)     
     dataFrameRx = dataRx
     respFlag = 1
+    tft.fillcircle((80, 13), 4, TFT.BLACK)
 
 def blink(timer):
     led.toggle()
@@ -173,7 +178,6 @@ def testfillrects(color1, color2):
     for x in range(tft.size()[0],0,-6):
         tft.fillrect((tft.size()[0]//2 - x//2, tft.size()[1]//2 - x/2), (x, x), color1)
         tft.rect((tft.size()[0]//2 - x//2, tft.size()[1]//2 - x/2), (x, x), color2)
-
 
 def testfillcircles(radius, color):
     for x in range(radius, tft.size()[0], radius * 2):
@@ -333,7 +337,7 @@ def stat_lcd():
     tft.text((0, 150), "PL  : " + str(lora._pl), TFT.WHITE, sysfont, 1)
         
 def write_log(f, datetime):
-        f.write("{}.{}.{} {}:{}:{}".format(datetime[2], datetime[1], datetime[0], datetime[4], datetime[5], datetime[6]) + ", Frequecy : {:.6f}".format(lora._frequency) + " MHz" +", FrmTx: " + str(cntTxFrame) + ", FrmRx: " + str(cntRxFrame) + " CrcOk: " + str(crcFrameRxCntOk) + ", CrcEr: " + str(crcFrameRxCntErr) + ", FrmLost: " + str(cntFrmTout) + ", RSSI: " + str(lora.get_rssi()) + " dBm" + ", SNR : " + str(lora.get_snr()) + " dB\n")
+        f.write("{}.{}.{} {}:{}:{}".format(datetime[2], datetime[1], datetime[0], datetime[4], datetime[5], datetime[6]) + ", Frequecy : {:.6f}".format(lora._frequency) + " MHz" +", FrmTx: " + str(cntTxFrame) + ", FrmRx: " + str(cntRxFrame) + " CrcOk: " + str(crcFrameRxCntOk) + ", CrcEr: " + str(crcFrameRxCntErr) + ", FrmLost: " + str(cntFrmTout) + ", RSSI: " + str(lora.get_rssi()) + " dBm" + ", SNR : " + str(lora.get_snr()) + " dB\n")  
 
 def test_main():
     global cntRxFrame, cntTxFrame, LoRaMaster, respFlag, dataFrameRx, crcFrameRxCntOk, crcFrameRxCntErr, logNr, cntFrmTout
@@ -343,7 +347,8 @@ def test_main():
     f = open(fileName, 'wt')
     timer.init(freq=2.5, mode=Timer.PERIODIC, callback=blink)
     showBMP()
-    time.sleep_ms(3000) 
+    time.sleep_ms(3000)
+    menu.root(tft)
     tft.fill(TFT.BLACK)   
     f.write(str(TEST_VER_STR + "\n"))
     tft.text((0, 0), TEST_VER_STR, TFT.WHITE, sysfont, 1)
@@ -369,17 +374,19 @@ def test_main():
             cntTxFrame = cntTxFrame + 1
             randomFrame(dataFrameTx, len(dataFrameTx))
             crcFrameTx.add_crc8(dataFrameTx, len(dataFrameTx))
+            tft.fillcircle((80, 13), 4, TFT.YELLOW)
             lora.send(dataFrameTx)
-            lora.recv()
+            tft.fillcircle((80, 13), 4, TFT.BLACK)
+            lora.recv()      
             timeOut = 0
-            while ((respFlag == 0) and (timeOut < TIME_OUT_7800_8_8)):
+            while ((respFlag == 0) and (timeOut < TIME_OUT_125000_12_8)):
                 time.sleep_ms(10)
                 timeOut = timeOut + 1
 
             now = rtc.datetime()
             time_lcd(now)
             stat_lcd()
-            write_log(f, now)
+            write_log(f, now) 
             f.close()
             file_stat = os.stat(fileName)
             f = open(fileName, 'at')
@@ -415,7 +422,9 @@ def test_main():
                     crcFrameRxCntOk = crcFrameRxCntOk + 1                    
                     randomFrame(dataFrameTx, len(dataFrameTx))
                     crcFrameTx.add_crc8(dataFrameTx, len(dataFrameTx))
+                    tft.fillcircle((80, 13), 4, TFT.YELLOW)
                     lora.send(dataFrameTx)
+                    tft.fillcircle((80, 13), 4, TFT.BLACK)
                     lora.recv()
                     cntTxFrame = cntTxFrame + 1           
                 else:
