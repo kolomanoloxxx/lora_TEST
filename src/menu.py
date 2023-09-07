@@ -4,6 +4,7 @@ import time
 import math
 import gc
 import os
+import loracfg
 
 def root(tft):
     sel = 1
@@ -61,10 +62,11 @@ def change(tft, sel):
             if key == "a":
                 master = not(master)
             if key == "z":
+                loracfg.cfg["MASTER"] = master
                 menu_exit = 0
             time.sleep_ms(100)    
     if (sel == 2):
-        freq = 433
+        freq = loracfg.cfg["FRQ"]
         menu_exit = 1
         while (menu_exit):
             tft.fill(TFT.BLACK)
@@ -82,12 +84,15 @@ def change(tft, sel):
                 if (freq > 525):
                     freq = 410
             if key == "z":
+                loracfg.cfg["FRQ"] = freq
                 menu_exit = 0
             time.sleep_ms(100)
     if (sel == 3):
+        bw = loracfg.cfg["BW"]
         bws = (7800, 10400, 15600, 20800, 31250, 41700, 62500, 125000, 250000, 500000)
-        j = 9
-        bw = bws[j]
+        for j in range(9):
+            if bw == bws[j]:
+                break
         menu_exit = 1
         while (menu_exit):
             tft.fill(TFT.BLACK)
@@ -105,11 +110,12 @@ def change(tft, sel):
                 if (j < 0):
                     j = 9
             if key == "z":
+                loracfg.cfg["BW"] = bws[j]
                 menu_exit = 0
             bw = bws[j]                
             time.sleep_ms(100)
     if (sel == 4):
-        sf = 12
+        sf = loracfg.cfg["SF"]
         menu_exit = 1
         while (menu_exit):
             tft.fill(TFT.BLACK)
@@ -127,10 +133,11 @@ def change(tft, sel):
                 if (sf < 6):
                     sf = 12
             if key == "z":
+                loracfg.cfg["SF"] = sf
                 menu_exit = 0               
             time.sleep_ms(100)
     if (sel == 5):
-        cr = 8
+        cr = loracfg.cfg["CR"]
         menu_exit = 1
         while (menu_exit):
             tft.fill(TFT.BLACK)
@@ -148,6 +155,7 @@ def change(tft, sel):
                 if (cr < 5):
                     cr = 8
             if key == "z":
+                loracfg.cfg["CR"] = cr
                 menu_exit = 0               
             time.sleep_ms(100)
     if (sel == 6):
@@ -170,6 +178,7 @@ def change(tft, sel):
             key = input("Select:")
             ## TODO
             if key == "z":
+                loracfg.write()
                 menu_exit = 0               
             time.sleep_ms(100)
 

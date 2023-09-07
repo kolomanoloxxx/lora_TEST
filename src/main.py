@@ -10,9 +10,10 @@ import gc
 import random
 import os
 import menu
+import loracfg
 
 # definicje stalych znakowych uzywanych wielokrotnie
-TEST_VER_STR = "Test LoRa ver.:1.08"
+TEST_VER_STR = "Test LoRa ver.:1.09"
 MASTER_STR = "LoRa Master"
 SLAVE_STR = "LoRa Slave" 
 LOG_SIZE_KB = 128                       # rozmiar pliku w kB z logiem parametrow lacznosci
@@ -57,6 +58,7 @@ crcFrameRxCntOk = 0
 crcFrameRxCntErr = 0
 respFlag = 0
 logNr = 0
+lora = 0
 
 dataFrameRx = bytearray(16)
 # reset do lora RA02 na SX1278
@@ -106,24 +108,6 @@ except Exception as e:
 	if spi_lora:
 		spi_lora.deinit()
 		spi_LORA = None
-
-# w Pytonie brak typu signet char jest signet int wiec trza kombinowac jak za komuny bylo lepiej nie mowic
-if OSC_PPM < 0:
-    ppm_cor_schar = 0x80 | (0xFF & (-OSC_PPM))   
-else:
-    ppm_cor_schar = 0xFF & OSC_PPM
-
-# Setup LoRa
-lora = LoRa(
-                spi_lora,
-                cs=Pin(5, Pin.OUT),
-                rx=Pin(6, Pin.IN), #receiver IRQ
-                frequency=412,
-                bandwidth=125000,
-                spreading_factor=12,
-                coding_rate=8,
-                ppm_cor=ppm_cor_schar,
-            )
 
 # Receive handler
 def handler(dataRx):
@@ -313,7 +297,11 @@ def time_lcd(datetime):
         seconds = str(datetime[6])
     tft.text((0, 20), "{}.{}.{} {}:{}:{}".format(datetime[2], datetime[1], datetime[0], hours, minutes, seconds), TFT.WHITE, sysfont, 1)    
 
+def write_log(f, datetime):
+        f.write("{}.{}.{} {}:{}:{}".format(datetime[2], datetime[1], datetime[0], datetime[4], datetime[5], datetime[6]) + ", Frequecy : {:.6f}".format(lora._frequency) + " MHz" +", FrmTx: " + str(cntTxFrame) + ", FrmRx: " + str(cntRxFrame) + " CrcOk: " + str(crcFrameRxCntOk) + ", CrcEr: " + str(crcFrameRxCntErr) + ", FrmLost: " + str(cntFrmTout) + ", RSSI: " + str(lora.get_rssi()) + " dBm" + ", SNR : " + str(lora.get_snr()) + " dB\n")  
+
 def stat_lcd():
+    global lora
     tft.text((0, 30), "FrmTx: " + str(cntTxFrame), TFT.YELLOW, sysfont, 1)    
     tft.text((0, 40), "FrmRx: " + str(cntRxFrame), TFT.GREEN, sysfont, 1)    
     tft.text((0, 50), "CrcOk: " + str(crcFrameRxCntOk), TFT.GREEN, sysfont, 1)    
@@ -335,12 +323,9 @@ def stat_lcd():
     tft.text((0, 130), "SF  : " + str(lora._sf), TFT.WHITE, sysfont, 1)       
     tft.text((0, 140), "CR  : " + str(lora._cr), TFT.WHITE, sysfont, 1)       
     tft.text((0, 150), "PL  : " + str(lora._pl), TFT.WHITE, sysfont, 1)
-        
-def write_log(f, datetime):
-        f.write("{}.{}.{} {}:{}:{}".format(datetime[2], datetime[1], datetime[0], datetime[4], datetime[5], datetime[6]) + ", Frequecy : {:.6f}".format(lora._frequency) + " MHz" +", FrmTx: " + str(cntTxFrame) + ", FrmRx: " + str(cntRxFrame) + " CrcOk: " + str(crcFrameRxCntOk) + ", CrcEr: " + str(crcFrameRxCntErr) + ", FrmLost: " + str(cntFrmTout) + ", RSSI: " + str(lora.get_rssi()) + " dBm" + ", SNR : " + str(lora.get_snr()) + " dB\n")  
-
+    
 def test_main():
-    global cntRxFrame, cntTxFrame, LoRaMaster, respFlag, dataFrameRx, crcFrameRxCntOk, crcFrameRxCntErr, logNr, cntFrmTout
+    global cntRxFrame, cntTxFrame, LoRaMaster, respFlag, dataFrameRx, crcFrameRxCntOk, crcFrameRxCntErr, logNr, cntFrmTout, lora
     print(TEST_VER_STR)
     print(os.uname())
     fileName = "log{}.txt".format(logNr)
@@ -348,7 +333,26 @@ def test_main():
     timer.init(freq=2.5, mode=Timer.PERIODIC, callback=blink)
     showBMP()
     time.sleep_ms(3000)
+
+    loracfg.init()
     menu.root(tft)
+    # w Pytonie brak typu signet char jest signet int wiec trza kombinowac jak za komuny bylo lepiej nie mowic
+    if OSC_PPM < 0:
+        ppm_cor_schar = 0x80 | (0xFF & (-OSC_PPM))   
+    else:
+        ppm_cor_schar = 0xFF & OSC_PPM
+        
+    # Setup LoRa
+    lora = LoRa(
+                    spi_lora,
+                    cs=Pin(5, Pin.OUT),
+                    rx=Pin(6, Pin.IN), #receiver IRQ
+                    frequency=loracfg.cfg["FRQ"],
+                    bandwidth=loracfg.cfg["BW"],
+                    spreading_factor=loracfg.cfg["SF"],
+                    coding_rate=loracfg.cfg["CR"],
+                    ppm_cor=ppm_cor_schar,
+                )        
     tft.fill(TFT.BLACK)   
     f.write(str(TEST_VER_STR + "\n"))
     tft.text((0, 0), TEST_VER_STR, TFT.WHITE, sysfont, 1)
@@ -440,7 +444,7 @@ def test_main():
                         logNr = 0
                     fileName = "log{}.txt".format(logNr)
                     f = open(fileName, 'wt')            
- 
+        
 test_main()
 
 
