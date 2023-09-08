@@ -11,9 +11,10 @@ import random
 import os
 import menu
 import loracfg
+from keys import KEYS
 
 # definicje stalych znakowych uzywanych wielokrotnie
-TEST_VER_STR = "Test LoRa ver.:1.09"
+TEST_VER_STR = "Test LoRa ver.:1.10"
 MASTER_STR = "LoRa Master"
 SLAVE_STR = "LoRa Slave" 
 LOG_SIZE_KB = 128                       # rozmiar pliku w kB z logiem parametrow lacznosci
@@ -67,6 +68,8 @@ dataFrameRx = bytearray(16)
 # minimalny czas po zmianie ze stanu aktywnego na nieaktywny na resecie to 5ms dajemy z zapasem 10ms
 loraResetPin = Pin(7, Pin.OUT)
 led = Pin(25, Pin.OUT)
+
+button = KEYS()
 
 # podswietlenie LCD z PWM na 90%
 podswietlenie = 90
@@ -335,7 +338,7 @@ def test_main():
     time.sleep_ms(3000)
 
     loracfg.init()
-    menu.root(tft)
+    menu.root(tft, button)
     # w Pytonie brak typu signet char jest signet int wiec trza kombinowac jak za komuny bylo lepiej nie mowic
     if OSC_PPM < 0:
         ppm_cor_schar = 0x80 | (0xFF & (-OSC_PPM))   
@@ -414,7 +417,13 @@ def test_main():
                 lora.sleep()
                 lora.set_frequency(new_freq)                
             else:
-                cntFrmTout = cntFrmTout + 1               
+                cntFrmTout = cntFrmTout + 1
+
+            if button.read() == 4:
+                tft.fill(TFT.BLACK)                
+                menu.root(tft, button)
+                ## TODO lora config
+
         else:
             now = rtc.datetime()
             time_lcd(now)
@@ -443,7 +452,12 @@ def test_main():
                     if logNr > LOG_FILE_MAX: # pliki z logami od log0..log<LOG_FILE_MAX> i nadpisanie
                         logNr = 0
                     fileName = "log{}.txt".format(logNr)
-                    f = open(fileName, 'wt')            
+                    f = open(fileName, 'wt')
+                if button.read() == 4:
+                    tft.fill(TFT.BLACK)                
+                    menu.root(tft, button)
+                    ## TODO lora config
+    
         
 test_main()
 
