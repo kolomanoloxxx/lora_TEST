@@ -14,7 +14,7 @@ import loracfg
 from keys import KEYS
 
 # definicje stalych znakowych uzywanych wielokrotnie
-TEST_VER_STR = "Test LoRa ver.:1.10"
+TEST_VER_STR = "Test LoRa ver.:1.11"
 MASTER_STR = "LoRa Master"
 SLAVE_STR = "LoRa Slave" 
 LOG_SIZE_KB = 128                       # rozmiar pliku w kB z logiem parametrow lacznosci
@@ -50,8 +50,6 @@ TIME_OUT_7800_11_8   = 6400  # 64000 msec -- nie dziala
 # dla SF = 10 czulosc odbiornika -134..135dBm, SNR = -15dB
 # dla SF = 7 czulosc odbiornika -125..126dBm, SNR = -7dB
 
-LoRaMaster = 1
-
 cntRxFrame = 0
 cntTxFrame = 0
 cntFrmTout = 0
@@ -68,17 +66,8 @@ dataFrameRx = bytearray(16)
 # minimalny czas po zmianie ze stanu aktywnego na nieaktywny na resecie to 5ms dajemy z zapasem 10ms
 loraResetPin = Pin(7, Pin.OUT)
 led = Pin(25, Pin.OUT)
-
 button = KEYS()
-
-# podswietlenie LCD z PWM na 90%
-podswietlenie = 90
-bl = PWM(Pin(13))
-bl.freq(1000)
-bl.duty_u16(int((podswietlenie/100)*65535))
-
 timer = Timer()
-
 spi = SPI(1, baudrate=80000000, polarity=0, phase=0, sck=Pin(10), mosi=Pin(11), miso=None)
 tft=TFT(spi,16,17,18)
 tft.initr()
@@ -86,8 +75,6 @@ tft.rgb(True)
 
 rtc = machine.RTC()
 rtc.datetime((2023, 9, 1, 0, 00, 00, 0, 0))
-
-# tododu srududu do zrobienia ustawianie daty i czasu
 
 loraResetPin.low()
 time.sleep_us(200)
@@ -309,7 +296,7 @@ def stat_lcd():
     tft.text((0, 40), "FrmRx: " + str(cntRxFrame), TFT.GREEN, sysfont, 1)    
     tft.text((0, 50), "CrcOk: " + str(crcFrameRxCntOk), TFT.GREEN, sysfont, 1)    
     tft.text((0, 60), "CrcEr: " + str(crcFrameRxCntErr), TFT.RED, sysfont, 1)    
-    if LoRaMaster:
+    if (loracfg.cfg["MASTER"] == 1):
         tft.text((0, 70), "FrmLost: " + str(cntFrmTout), TFT.RED, sysfont, 1)
         flr = (int)(10000*(cntFrmTout/cntTxFrame))
         tft.text((0, 80), "FLR: " + str(flr/100) + " %   ", TFT.YELLOW, sysfont, 1)
@@ -328,17 +315,19 @@ def stat_lcd():
     tft.text((0, 150), "PL  : " + str(lora._pl), TFT.WHITE, sysfont, 1)
     
 def test_main():
-    global cntRxFrame, cntTxFrame, LoRaMaster, respFlag, dataFrameRx, crcFrameRxCntOk, crcFrameRxCntErr, logNr, cntFrmTout, lora
+    global cntRxFrame, cntTxFrame, respFlag, dataFrameRx, crcFrameRxCntOk, crcFrameRxCntErr, logNr, cntFrmTout, lora
     print(TEST_VER_STR)
     print(os.uname())
     fileName = "log{}.txt".format(logNr)
     f = open(fileName, 'wt')
     timer.init(freq=2.5, mode=Timer.PERIODIC, callback=blink)
+    loracfg.init()
+    bl = PWM(Pin(13))
+    bl.freq(1000)
+    bl.duty_u16(int((loracfg.cfg["LCD"]/100)*65535))    
     showBMP()
     time.sleep_ms(3000)
-
-    loracfg.init()
-    menu.root(tft, button)
+    menu.root(tft, button, rtc, bl)
     # w Pytonie brak typu signet char jest signet int wiec trza kombinowac jak za komuny bylo lepiej nie mowic
     if OSC_PPM < 0:
         ppm_cor_schar = 0x80 | (0xFF & (-OSC_PPM))   
@@ -358,17 +347,14 @@ def test_main():
                 )        
     tft.fill(TFT.BLACK)   
     f.write(str(TEST_VER_STR + "\n"))
-    tft.text((0, 0), TEST_VER_STR, TFT.WHITE, sysfont, 1)
-    if LoRaMaster:
+    if (loracfg.cfg["MASTER"] == 1):
         f.write(str(MASTER_STR + "\n"))
-        tft.text((0, 10), MASTER_STR, TFT.GREEN, sysfont, 1)
     else:
         f.write(str(SLAVE_STR + "\n"))
-        tft.text((0, 10), SLAVE_STR, TFT.GREEN, sysfont, 1)        
  
     f.write("Frequecy : " + str(lora._frequency) + " MHz" + ", Bandwidth : " + str(lora._bandwidth) + " Hz" + ", SF(spread factor): " + str(lora._sf) + ", CR(Coding Rate): " + str(lora._cr) + ", PL(Preamble Length): " + str(lora._pl) + "\n")
     lora.on_recv(handler)     # Set handler
-    if LoRaMaster == 0:
+    if (loracfg.cfg["MASTER"] == 0):
         lora.recv()
     cntFrmOk = 0
     cntFrmTout= 0
@@ -376,8 +362,9 @@ def test_main():
     crcFrameTx = Crc()
     crcFrameRx = Crc() 
     while(1):
-        
-        if LoRaMaster:
+        if (loracfg.cfg["MASTER"] == 1):
+            tft.text((0, 0), TEST_VER_STR, TFT.WHITE, sysfont, 1)
+            tft.text((0, 10), MASTER_STR, TFT.GREEN, sysfont, 1)
             cntTxFrame = cntTxFrame + 1
             randomFrame(dataFrameTx, len(dataFrameTx))
             crcFrameTx.add_crc8(dataFrameTx, len(dataFrameTx))
@@ -421,10 +408,12 @@ def test_main():
 
             if button.read() == 4:
                 tft.fill(TFT.BLACK)                
-                menu.root(tft, button)
-                ## TODO lora config
+                menu.root(tft, button, rtc, bl)
+                f.write("Frequecy : " + str(lora._frequency) + " MHz" + ", Bandwidth : " + str(lora._bandwidth) + " Hz" + ", SF(spread factor): " + str(lora._sf) + ", CR(Coding Rate): " + str(lora._cr) + ", PL(Preamble Length): " + str(lora._pl) + "\n")
 
         else:
+            tft.text((0, 0), TEST_VER_STR, TFT.WHITE, sysfont, 1)
+            tft.text((0, 10), SLAVE_STR, TFT.GREEN, sysfont, 1)                
             now = rtc.datetime()
             time_lcd(now)
             stat_lcd()  
@@ -455,9 +444,9 @@ def test_main():
                     f = open(fileName, 'wt')
                 if button.read() == 4:
                     tft.fill(TFT.BLACK)                
-                    menu.root(tft, button)
-                    ## TODO lora config
-    
+                    menu.root(tft, button, rtc, bl)
+                    f.write("Frequecy : " + str(lora._frequency) + " MHz" + ", Bandwidth : " + str(lora._bandwidth) + " Hz" + ", SF(spread factor): " + str(lora._sf) + ", CR(Coding Rate): " + str(lora._cr) + ", PL(Preamble Length): " + str(lora._pl) + "\n")
+
         
 test_main()
 
