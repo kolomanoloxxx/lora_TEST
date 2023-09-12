@@ -10,7 +10,8 @@ cfg = {
               "CR": 8,
               "PL": 64,
               "PPM": 0,
-              "LCD": 90
+              "LCD": 90,
+              "BUZ": 0
       }
 
 def init():
@@ -31,7 +32,8 @@ def init():
             f.write("\"CR\": 8,\n")
             f.write("\"PL\": 64,\n")
             f.write("\"PPM\": 0,\n")
-            f.write("\"LCD\": 90,}")
+            f.write("\"LCD\": 90,\n")
+            f.write("\"BUZ\": 1}")
             f.close()
     else:
         data = f.read()
@@ -53,7 +55,8 @@ def write():
         f.write(str("\"CR\": {},\n".format(cfg["CR"]))) 
         f.write(str("\"PL\": {},\n".format(cfg["PL"]))) 
         f.write(str("\"PPM\": {},\n".format(cfg["PPM"]))) 
-        f.write(str("\"LCD\": {},".format(cfg["LCD"]))) 
+        f.write(str("\"LCD\": {},\n".format(cfg["LCD"]))) 
+        f.write(str("\"BUZ\": {},\n".format(cfg["BUZ"]))) 
         f.write(str("}\n")) 
         f.close()
         

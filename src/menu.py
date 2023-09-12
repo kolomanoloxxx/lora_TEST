@@ -1,6 +1,7 @@
 from ST7735 import TFT,TFTColor
 from sysfont import sysfont
 from machine import RTC
+from buzzer import BUZZER
 import time
 import math
 import gc
@@ -8,7 +9,7 @@ import os
 import loracfg
 import keys
 
-def root(tft, button, rtc, bl):
+def root(tft, button, rtc, bl, bzykacz):
     tft.fill(TFT.BLACK)
     sel = 1
     menu_exit = 1
@@ -19,36 +20,43 @@ def root(tft, button, rtc, bl):
         tft.text((0, 10), "LoRa", color[1], sysfont, 1)
         tft.text((0, 20), "Data i Czas", color[2], sysfont, 1)
         tft.text((0, 30), "Podswietlenie", color[3], sysfont, 1)
-        tft.text((0, 40), "Zapisz konfiguracje", color[4], sysfont, 1)
-        tft.text((0, 50), "Wyjscie", color[5], sysfont, 1)
+        tft.text((0, 40), "Bzykacz", color[4], sysfont, 1)
+        tft.text((0, 50), "Zapisz konfiguracje", color[5], sysfont, 1)
+        tft.text((0, 60), "Pokaz konfiguracje", color[6], sysfont, 1)
+        tft.text((0, 70), "Wyjscie", color[7], sysfont, 1)
         
         while(button.read()):
             pass
         key = 0
         while(key == 0):
             key = button.read()
+        bzykacz.beep(1)
         if key == 1:
             sel = sel - 1
             if sel == 0:
-                sel = 5
+                sel = 7
         if key == 2:
             sel = sel + 1
-            if sel == 6:
+            if sel == 8:
                 sel = 1  
         if key == 4:
             if (sel == 1):
-                lora(tft, button)
+                lora(tft, button, bzykacz)
             elif (sel == 2):
-                date_time(tft, button, rtc)
+                date_time(tft, button, rtc, bzykacz)
             elif (sel == 3):
-                lcd(tft, button, bl)
+                lcd(tft, button, bl, bzykacz)
             elif (sel == 4):
+                buz(tft, button, bl, bzykacz)
+            elif (sel == 5):
                 save_cfg(tft)
                 menu_exit = 0
+            elif (sel == 6):
+                show_cfg(tft, button, bzykacz)
             else:    
                 menu_exit = 0
 
-def lora(tft, button):
+def lora(tft, button, bzykacz):
     tft.fill(TFT.BLACK)
     sel = 1
     menu_exit = 1
@@ -69,6 +77,7 @@ def lora(tft, button):
         key = 0
         while(key == 0):
             key = button.read()
+        bzykacz.beep(1)            
         if key == 1:
             sel = sel - 1
             if sel == 0:
@@ -83,11 +92,11 @@ def lora(tft, button):
                 tft.fill(TFT.BLACK)
 
             else:    
-                lora_set(tft, sel, button)
+                lora_set(tft, sel, button, bzykacz)
 
-def lora_set(tft, sel, button):
+def lora_set(tft, sel, button, bzykacz):
     if (sel == 1):
-        master = 1
+        master = loracfg.cfg["MASTER"]
         menu_exit = 1
         while (menu_exit):
             tft.fill(TFT.BLACK)
@@ -101,12 +110,13 @@ def lora_set(tft, sel, button):
             key = 0
             while(key == 0):
                 key = button.read()
+            bzykacz.beep(1)            
             if key == 1:
                 master = not(master)
             if key == 2:
                 master = not(master)
             if key == 4:
-                loracfg.cfg["MASTER"] = master
+                loracfg.cfg["MASTER"] = int(master)
                 menu_exit = 0
                 tft.fill(TFT.BLACK)
 
@@ -123,6 +133,7 @@ def lora_set(tft, sel, button):
             key = 0
             while(key == 0):
                 key = button.read()
+            bzykacz.beep(1)
             if key == 1:
                 freq = freq+1
                 if (freq > 525):
@@ -153,6 +164,7 @@ def lora_set(tft, sel, button):
             key = 0
             while(key == 0):
                 key = button.read()
+            bzykacz.beep(1)            
             if key == 1:
                 j = j+1
                 if (j > 9):
@@ -180,6 +192,7 @@ def lora_set(tft, sel, button):
             key = 0
             while(key == 0):
                 key = button.read()
+            bzykacz.beep(1)            
             if key == 1:
                 sf = sf+1
                 if (sf > 12):
@@ -206,6 +219,7 @@ def lora_set(tft, sel, button):
             key = 0
             while(key == 0):
                 key = button.read()
+            bzykacz.beep(1)            
             if key == 1:
                 cr = cr+1
                 if (cr > 8):
@@ -232,6 +246,7 @@ def lora_set(tft, sel, button):
             key = 0
             while(key == 0):
                 key = button.read()
+            bzykacz.beep(1)            
             if key == 1:
                 pl = pl+1
                 if (pl > 65000):
@@ -258,6 +273,7 @@ def lora_set(tft, sel, button):
             key = 0
             while(key == 0):
                 key = button.read()
+            bzykacz.beep(1)
             if key == 1:
                 ppm = ppm+1
                 if (ppm > 127):
@@ -276,8 +292,33 @@ def save_cfg(tft):
     tft.text((0, 0), "Konfiguracja zapisana", TFT.WHITE , sysfont, 1)
     loracfg.write()
     time.sleep_ms(3000)  
+    tft.fill(TFT.BLACK)
 
-def date_time(tft, button, rtc):
+def show_cfg(tft, button, bzykacz):
+    menu_exit = 1
+    while (menu_exit):
+        tft.fill(TFT.BLACK)
+        tft.text((0, 0), "Konfiguracja:", TFT.WHITE , sysfont, 1)
+        tft.text((0, 10), "Tryb: {}".format(loracfg.cfg["MASTER"]), TFT.WHITE, sysfont, 1)
+        tft.text((0, 20), "FRQ : {}".format(loracfg.cfg["FRQ"]), TFT.WHITE, sysfont, 1)
+        tft.text((0, 30), "BW  : {}".format(loracfg.cfg["BW"]), TFT.WHITE, sysfont, 1)
+        tft.text((0, 40), "SF  : {}".format(loracfg.cfg["SF"]), TFT.WHITE, sysfont, 1)
+        tft.text((0, 50), "CR  : {}".format(loracfg.cfg["CR"]), TFT.WHITE, sysfont, 1)
+        tft.text((0, 60), "PL  : {}".format(loracfg.cfg["PL"]), TFT.WHITE, sysfont, 1)
+        tft.text((0, 70), "PPM : {}".format(loracfg.cfg["PPM"]), TFT.WHITE, sysfont, 1)
+        tft.text((0, 80), "LCD : {}".format(loracfg.cfg["LCD"]), TFT.WHITE, sysfont, 1)
+        tft.text((0, 90), "BUZ : {}".format(loracfg.cfg["BUZ"]), TFT.WHITE, sysfont, 1)
+        while(button.read()):
+            pass
+        key = 0
+        while(key == 0):
+            key = button.read()
+        bzykacz.beep(1)            
+        if key == 4:
+            menu_exit = 0
+            tft.fill(TFT.BLACK)
+
+def date_time(tft, button, rtc, bzykacz):
     tft.fill(TFT.BLACK)
     sel = 1
     menu_exit = 1
@@ -293,6 +334,7 @@ def date_time(tft, button, rtc):
         key = 0
         while(key == 0):
             key = button.read()
+        bzykacz.beep(1)    
         if key == 1:
             sel = sel - 1
             if sel == 0:
@@ -303,15 +345,15 @@ def date_time(tft, button, rtc):
                 sel = 1  
         if key == 4:
             if (sel == 1):
-                date_set(tft, button, rtc)
+                date_set(tft, button, rtc, bzykacz)
             elif (sel == 2):
-                time_set(tft, button, rtc)
+                time_set(tft, button, rtc, bzykacz)
             else:
                 menu_exit = 0
                 tft.fill(TFT.BLACK)
 
 
-def date_set(tft, button, rtc):
+def date_set(tft, button, rtc, bzykacz):
     tft.fill(TFT.BLACK)
     datetime = rtc.datetime()
     dzien = int(datetime[2])
@@ -341,6 +383,7 @@ def date_set(tft, button, rtc):
         key = 0
         while(key == 0):
             key = button.read()
+        bzykacz.beep(1)
         if key == 1:
             if sel == 1:
                 dzien = dzien + 1
@@ -382,7 +425,7 @@ def date_set(tft, button, rtc):
             if sel == 5:
                 sel = 1
                 
-def time_set(tft, button, rtc):
+def time_set(tft, button, rtc, bzykacz):
     tft.fill(TFT.BLACK)
     datetime = rtc.datetime()
     godzina = 0
@@ -415,6 +458,7 @@ def time_set(tft, button, rtc):
         key = 0
         while(key == 0):
             key = button.read()
+        bzykacz.beep(1)
         if key == 1:
             if sel == 1:
                 godzina = godzina + 1
@@ -456,7 +500,7 @@ def time_set(tft, button, rtc):
             if sel == 5:
                 sel = 1
     
-def lcd(tft, button, bl):
+def lcd(tft, button, bl, bzykacz):
     tft.fill(TFT.BLACK)
     jasnosc = loracfg.cfg["LCD"]    
     sel = 1
@@ -474,6 +518,7 @@ def lcd(tft, button, bl):
         key = 0
         while(key == 0):
             key = button.read()
+        bzykacz.beep(1)
         if key == 1:
             jasnosc = jasnosc + 1
             if jasnosc == 101:
@@ -488,3 +533,28 @@ def lcd(tft, button, bl):
             tft.fill(TFT.BLACK)
         bl.duty_u16(int((jasnosc/100)*65535))
 
+def buz(tft, button, bl, bzykacz):
+    tft.fill(TFT.BLACK)
+    buzOnOff = loracfg.cfg["BUZ"]    
+    menu_exit = 1
+    while (menu_exit):
+        tft.fill(TFT.BLACK)
+        tft.text((0, 0), "Wlacznik bzykacza:", TFT.WHITE , sysfont, 1)
+        if buzOnOff:
+            tft.text((0, 10), "On ", TFT.GREEN, sysfont, 1)
+        else:
+            tft.text((0, 10), "Off ", TFT.GREEN, sysfont, 1)
+        while(button.read()):
+            pass
+        key = 0
+        while(key == 0):
+            key = button.read()
+        bzykacz.beep(1)            
+        if key == 1:
+            buzOnOff = not(buzOnOff)
+        if key == 2:
+            buzOnOff = not(buzOnOff)
+        if key == 4:
+            loracfg.cfg["BUZ"] = int(buzOnOff)
+            menu_exit = 0
+            tft.fill(TFT.BLACK)

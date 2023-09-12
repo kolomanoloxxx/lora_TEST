@@ -33,3 +33,21 @@ class KEYS:
         batony |= 4
     return (batony)
 
+  def up(self):
+    if (self.read() == 1):
+        return 1
+    else:
+        return 0
+
+  def down(self):
+    if (self.read() == 2):
+        return 1
+    else:
+        return 0
+
+  def ok(self):
+    if (self.read() == 4):
+        return 1
+    else:
+        return 0
+    

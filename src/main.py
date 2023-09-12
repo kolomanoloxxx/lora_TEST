@@ -4,6 +4,8 @@ from sysfont import sysfont
 from machine import SPI,Pin
 from machine import Pin, Timer, PWM, RTC
 from crc import Crc
+from keys import KEYS
+from buzzer import BUZZER
 import time
 import math
 import gc
@@ -11,37 +13,13 @@ import random
 import os
 import menu
 import loracfg
-from keys import KEYS
 
 # definicje stalych znakowych uzywanych wielokrotnie
-TEST_VER_STR = "Test LoRa ver.:1.11"
+TEST_VER_STR = "Test LoRa ver.:1.12"
 MASTER_STR = "LoRa Master"
 SLAVE_STR = "LoRa Slave" 
 LOG_SIZE_KB = 128                       # rozmiar pliku w kB z logiem parametrow lacznosci
 LOG_FILE_MAX = 7                        # ilosc tworzonych plikow logow przed nadpisaniem, start numeracji od 0
-OSC_PPM = 100                           # temperaturowy wspolczynnik zmiany czestotliwosci z danych katalogowych kwarcu, wartosc z zakresu: -127..+127
-
-# definicje czasow opoznienia oczekiwania na ramke
-# wartosc razy 10ms daje okres czasu 
-TIME_OUT_500000_12_8 = 200   # 2000 msec -- ok
-TIME_OUT_250000_12_8 = 400   # 4000 msec -- ok
-TIME_OUT_125000_12_8 = 800   # 8000 msec -- ok
-TIME_OUT_62500_12_8  = 1600  # 16000 msec -- ok
-TIME_OUT_41700_12_8  = 2400  # 24000 msec -- ok
-TIME_OUT_31250_12_8  = 3200  # 32000 msec -- ok
-TIME_OUT_20800_12_8  = 4800  # 48000 msec -- slabo
-TIME_OUT_15600_12_8  = 6400  # 64000 msec -- bardzo slabo
-TIME_OUT_10400_12_8  = 9600  # 96000 msec -- nie dziala
-TIME_OUT_7800_12_8   = 12800 # 128000 msec -- nie dziala
-
-TIME_OUT_250000_7_8 = 15   # 150 msec -- ok
-
-TIME_OUT_7800_7_5    = 400   # 4000 msec -- ok
-TIME_OUT_7800_7_8    = 400   # 4000 msec -- ok
-TIME_OUT_7800_8_8    = 800   # 8000 msec -- ok
-TIME_OUT_7800_9_8    = 1600  # 16000 msec -- slabo
-TIME_OUT_7800_10_8   = 3200  # 32000 msec -- bardzo slabo
-TIME_OUT_7800_11_8   = 6400  # 64000 msec -- nie dziala
 
 # parametry dla LORA Ra-02:
 # zakrse czestotliwosci: 410..525MHz
@@ -68,6 +46,8 @@ loraResetPin = Pin(7, Pin.OUT)
 led = Pin(25, Pin.OUT)
 button = KEYS()
 timer = Timer()
+bzykacz = BUZZER()
+bzykacz.beep(1, 10)
 spi = SPI(1, baudrate=80000000, polarity=0, phase=0, sck=Pin(10), mosi=Pin(11), miso=None)
 tft=TFT(spi,16,17,18)
 tft.initr()
@@ -82,7 +62,7 @@ loraResetPin.high()
 time.sleep_ms(10)
 
 try:
-	spi_lora = SPI(
+    spi_lora = SPI(
                         0,
                         baudrate=10000000,
                         polarity=0,
@@ -91,13 +71,13 @@ try:
                         mosi=Pin(3, Pin.OUT, Pin.PULL_UP),
                         miso=Pin(4, Pin.IN, Pin.PULL_UP),
                   )
-	spi_lora.init()
+    spi_lora.init()
 
 except Exception as e:
-	print(e)
-	if spi_lora:
-		spi_lora.deinit()
-		spi_LORA = None
+    print(e)
+    if spi_lora:
+        spi_lora.deinit()
+        spi_LORA = None
 
 # Receive handler
 def handler(dataRx):
@@ -313,7 +293,58 @@ def stat_lcd():
     tft.text((0, 130), "SF  : " + str(lora._sf), TFT.WHITE, sysfont, 1)       
     tft.text((0, 140), "CR  : " + str(lora._cr), TFT.WHITE, sysfont, 1)       
     tft.text((0, 150), "PL  : " + str(lora._pl), TFT.WHITE, sysfont, 1)
-    
+
+def calcTimeOnAir(msTout, bw, sf, fl, pl):
+    timeOut = (1500*math.pow(2, sf)*(fl+pl))/(bw*msTout)
+    return timeOut
+
+def loraReinit(bl, f):
+    global lora, tft, button, rtc, bzykacz
+    tft.fill(TFT.BLACK)                
+    menu.root(tft, button, rtc, bl, bzykacz)
+    # w Pytonie brak typu signet char jest signet int wiec trza kombinowac jak za komuny bylo lepiej nie mowic
+    osc_ppm = loracfg.cfg["PPM"]
+    if osc_ppm < 0:
+        ppm_cor_schar = 0x80 | (0xFF & (-osc_ppm))   
+    else:
+        ppm_cor_schar = 0xFF & osc_ppm
+
+    loraResetPin.low()
+    time.sleep_us(200)
+    loraResetPin.high()
+    time.sleep_ms(10)
+
+    try:
+        spi_lora = SPI(
+                            0,
+                            baudrate=10000000,
+                            polarity=0,
+                            phase=0,
+                            sck=Pin(2, Pin.OUT, Pin.PULL_DOWN),
+                            mosi=Pin(3, Pin.OUT, Pin.PULL_UP),
+                            miso=Pin(4, Pin.IN, Pin.PULL_UP),
+                      )
+        spi_lora.init()
+
+    except Exception as e:
+        print(e)
+        if spi_lora:
+            spi_lora.deinit()
+            spi_LORA = None
+    # Setup LoRa
+    lora = LoRa(
+                    spi_lora,
+                    cs=Pin(5, Pin.OUT),
+                    rx=Pin(6, Pin.IN), #receiver IRQ
+                    frequency=loracfg.cfg["FRQ"],
+                    bandwidth=loracfg.cfg["BW"],
+                    spreading_factor=loracfg.cfg["SF"],
+                    coding_rate=loracfg.cfg["CR"],
+                    ppm_cor=ppm_cor_schar,
+                )   
+    f.write("Frequecy : " + str(lora._frequency) + " MHz" + ", Bandwidth : " + str(lora._bandwidth) + " Hz" + ", SF(spread factor): " + str(lora._sf) + ", CR(Coding Rate): " + str(lora._cr) + ", PL(Preamble Length): " + str(lora._pl) + "\n")
+
+
 def test_main():
     global cntRxFrame, cntTxFrame, respFlag, dataFrameRx, crcFrameRxCntOk, crcFrameRxCntErr, logNr, cntFrmTout, lora
     print(TEST_VER_STR)
@@ -324,15 +355,17 @@ def test_main():
     loracfg.init()
     bl = PWM(Pin(13))
     bl.freq(1000)
-    bl.duty_u16(int((loracfg.cfg["LCD"]/100)*65535))    
+    bl.duty_u16(int((loracfg.cfg["LCD"]/100)*65535))
+    bzykacz.off()
     showBMP()
     time.sleep_ms(3000)
-    menu.root(tft, button, rtc, bl)
+    menu.root(tft, button, rtc, bl, bzykacz)
     # w Pytonie brak typu signet char jest signet int wiec trza kombinowac jak za komuny bylo lepiej nie mowic
-    if OSC_PPM < 0:
-        ppm_cor_schar = 0x80 | (0xFF & (-OSC_PPM))   
+    osc_ppm = loracfg.cfg["PPM"]
+    if osc_ppm < 0:
+        ppm_cor_schar = 0x80 | (0xFF & (-osc_ppm))   
     else:
-        ppm_cor_schar = 0xFF & OSC_PPM
+        ppm_cor_schar = 0xFF & osc_ppm
         
     # Setup LoRa
     lora = LoRa(
@@ -344,7 +377,7 @@ def test_main():
                     spreading_factor=loracfg.cfg["SF"],
                     coding_rate=loracfg.cfg["CR"],
                     ppm_cor=ppm_cor_schar,
-                )        
+                )   
     tft.fill(TFT.BLACK)   
     f.write(str(TEST_VER_STR + "\n"))
     if (loracfg.cfg["MASTER"] == 1):
@@ -369,14 +402,19 @@ def test_main():
             randomFrame(dataFrameTx, len(dataFrameTx))
             crcFrameTx.add_crc8(dataFrameTx, len(dataFrameTx))
             tft.fillcircle((80, 13), 4, TFT.YELLOW)
+            bzykacz.tx(loracfg.cfg["BUZ"])
             lora.send(dataFrameTx)
+            bzykacz.off()
             tft.fillcircle((80, 13), 4, TFT.BLACK)
             lora.recv()      
-            timeOut = 0
-            while ((respFlag == 0) and (timeOut < TIME_OUT_125000_12_8)):
-                time.sleep_ms(10)
-                timeOut = timeOut + 1
+            bzykacz.rx(loracfg.cfg["BUZ"])
+            timeStepms = 10
+            timeOnAirCnt = 0
+            while ((respFlag == 0) and (timeOnAirCnt < calcTimeOnAir(timeStepms, loracfg.cfg["BW"], loracfg.cfg["SF"], 16, loracfg.cfg["PL"]))):
+                time.sleep_ms(timeStepms )
+                timeOnAirCnt = timeOnAirCnt + 1
 
+            bzykacz.off()
             now = rtc.datetime()
             time_lcd(now)
             stat_lcd()
@@ -406,28 +444,32 @@ def test_main():
             else:
                 cntFrmTout = cntFrmTout + 1
 
-            if button.read() == 4:
-                tft.fill(TFT.BLACK)                
-                menu.root(tft, button, rtc, bl)
-                f.write("Frequecy : " + str(lora._frequency) + " MHz" + ", Bandwidth : " + str(lora._bandwidth) + " Hz" + ", SF(spread factor): " + str(lora._sf) + ", CR(Coding Rate): " + str(lora._cr) + ", PL(Preamble Length): " + str(lora._pl) + "\n")
+            if (button.ok()):
+                loraReinit(bl, f)    
 
         else:
             tft.text((0, 0), TEST_VER_STR, TFT.WHITE, sysfont, 1)
             tft.text((0, 10), SLAVE_STR, TFT.GREEN, sysfont, 1)                
             now = rtc.datetime()
             time_lcd(now)
-            stat_lcd()  
+            stat_lcd()
             if respFlag:
                 respFlag = 0
                 cntRxFrame = cntRxFrame + 1
                 if (crcFrameRx.check_crc8(dataFrameRx, len(dataFrameRx))):
-                    crcFrameRxCntOk = crcFrameRxCntOk + 1                    
+                    crcFrameRxCntOk = crcFrameRxCntOk + 1                 
+                    new_freq = lora.freq_sync_rx()  # wyznaczamy czestotliwosci z poprawka wyliczona po odebranej ramce
+                    lora.sleep()
+                    lora.set_frequency(new_freq)                                       
                     randomFrame(dataFrameTx, len(dataFrameTx))
                     crcFrameTx.add_crc8(dataFrameTx, len(dataFrameTx))
                     tft.fillcircle((80, 13), 4, TFT.YELLOW)
+                    bzykacz.tx(loracfg.cfg["BUZ"])            
                     lora.send(dataFrameTx)
+                    bzykacz.off()
                     tft.fillcircle((80, 13), 4, TFT.BLACK)
                     lora.recv()
+                    bzykacz.rx(loracfg.cfg["BUZ"])            
                     cntTxFrame = cntTxFrame + 1           
                 else:
                     crcFrameRxCntErr = crcFrameRxCntErr + 1    
@@ -442,11 +484,9 @@ def test_main():
                         logNr = 0
                     fileName = "log{}.txt".format(logNr)
                     f = open(fileName, 'wt')
-                if button.read() == 4:
-                    tft.fill(TFT.BLACK)                
-                    menu.root(tft, button, rtc, bl)
-                    f.write("Frequecy : " + str(lora._frequency) + " MHz" + ", Bandwidth : " + str(lora._bandwidth) + " Hz" + ", SF(spread factor): " + str(lora._sf) + ", CR(Coding Rate): " + str(lora._cr) + ", PL(Preamble Length): " + str(lora._pl) + "\n")
-
+            if (button.ok()):
+                loraReinit(bl, f)
+                lora.recv()
         
 test_main()
 
