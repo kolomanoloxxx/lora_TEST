@@ -13,9 +13,10 @@ import random
 import os
 import menu
 import loracfg
+import _thread
 
 # definicje stalych znakowych uzywanych wielokrotnie
-TEST_VER_STR = "Test LoRa ver.:1.12"
+TEST_VER_STR = "Test LoRa ver.:1.13"
 MASTER_STR = "LoRa Master"
 SLAVE_STR = "LoRa Slave" 
 LOG_SIZE_KB = 128                       # rozmiar pliku w kB z logiem parametrow lacznosci
@@ -38,6 +39,10 @@ logNr = 0
 lora = 0
 
 dataFrameRx = bytearray(16)
+
+def CoreTask():
+    bzykacz.StarWars()
+    
 # reset do lora RA02 na SX1278
 # dokumentacja SX1278 mowi ze stanem aktywnym jest stan niski dla wejscia resetu
 # minimalny czas stanu aktywnego to 100us dajemy z zapasem 200us
@@ -47,7 +52,7 @@ led = Pin(25, Pin.OUT)
 button = KEYS()
 timer = Timer()
 bzykacz = BUZZER()
-bzykacz.beep(1, 10)
+_thread.start_new_thread(CoreTask, ())
 spi = SPI(1, baudrate=80000000, polarity=0, phase=0, sck=Pin(10), mosi=Pin(11), miso=None)
 tft=TFT(spi,16,17,18)
 tft.initr()
@@ -356,7 +361,7 @@ def test_main():
     bl = PWM(Pin(13))
     bl.freq(1000)
     bl.duty_u16(int((loracfg.cfg["LCD"]/100)*65535))
-    bzykacz.off()
+    bzykacz.off(loracfg.cfg["BUZ"])
     showBMP()
     time.sleep_ms(3000)
     menu.root(tft, button, rtc, bl, bzykacz)
@@ -404,7 +409,7 @@ def test_main():
             tft.fillcircle((80, 13), 4, TFT.YELLOW)
             bzykacz.tx(loracfg.cfg["BUZ"])
             lora.send(dataFrameTx)
-            bzykacz.off()
+            bzykacz.off(loracfg.cfg["BUZ"])
             tft.fillcircle((80, 13), 4, TFT.BLACK)
             lora.recv()      
             bzykacz.rx(loracfg.cfg["BUZ"])
@@ -414,7 +419,7 @@ def test_main():
                 time.sleep_ms(timeStepms )
                 timeOnAirCnt = timeOnAirCnt + 1
 
-            bzykacz.off()
+            bzykacz.off(loracfg.cfg["BUZ"])
             now = rtc.datetime()
             time_lcd(now)
             stat_lcd()
@@ -445,8 +450,8 @@ def test_main():
                 cntFrmTout = cntFrmTout + 1
 
             if (button.ok()):
-                loraReinit(bl, f)    
-
+                loraReinit(bl, f)
+            gc.collect()
         else:
             tft.text((0, 0), TEST_VER_STR, TFT.WHITE, sysfont, 1)
             tft.text((0, 10), SLAVE_STR, TFT.GREEN, sysfont, 1)                
@@ -466,7 +471,7 @@ def test_main():
                     tft.fillcircle((80, 13), 4, TFT.YELLOW)
                     bzykacz.tx(loracfg.cfg["BUZ"])            
                     lora.send(dataFrameTx)
-                    bzykacz.off()
+                    bzykacz.off(loracfg.cfg["BUZ"])
                     tft.fillcircle((80, 13), 4, TFT.BLACK)
                     lora.recv()
                     bzykacz.rx(loracfg.cfg["BUZ"])            
@@ -487,7 +492,7 @@ def test_main():
             if (button.ok()):
                 loraReinit(bl, f)
                 lora.recv()
-        
+            gc.collect()       
 test_main()
 
 
