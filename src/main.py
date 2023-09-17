@@ -6,6 +6,7 @@ from machine import Pin, Timer, PWM, RTC
 from crc import Crc
 from keys import KEYS
 from buzzer import BUZZER
+from log import LogWriter
 import time
 import math
 import gc
@@ -16,7 +17,7 @@ import loracfg
 import _thread
 
 # definicje stalych znakowych uzywanych wielokrotnie
-TEST_VER_STR = "Test LoRa ver.:1.13"
+TEST_VER_STR = "Test LoRa ver.:1.14"
 MASTER_STR = "LoRa Master"
 SLAVE_STR = "LoRa Slave" 
 LOG_SIZE_KB = 128                       # rozmiar pliku w kB z logiem parametrow lacznosci
@@ -52,6 +53,7 @@ led = Pin(25, Pin.OUT)
 button = KEYS()
 timer = Timer()
 bzykacz = BUZZER()
+bzykacz.off(1)
 _thread.start_new_thread(CoreTask, ())
 spi = SPI(1, baudrate=80000000, polarity=0, phase=0, sck=Pin(10), mosi=Pin(11), miso=None)
 tft=TFT(spi,16,17,18)
@@ -272,8 +274,8 @@ def time_lcd(datetime):
         seconds = str(datetime[6])
     tft.text((0, 20), "{}.{}.{} {}:{}:{}".format(datetime[2], datetime[1], datetime[0], hours, minutes, seconds), TFT.WHITE, sysfont, 1)    
 
-def write_log(f, datetime):
-        f.write("{}.{}.{} {}:{}:{}".format(datetime[2], datetime[1], datetime[0], datetime[4], datetime[5], datetime[6]) + ", Frequecy : {:.6f}".format(lora._frequency) + " MHz" +", FrmTx: " + str(cntTxFrame) + ", FrmRx: " + str(cntRxFrame) + " CrcOk: " + str(crcFrameRxCntOk) + ", CrcEr: " + str(crcFrameRxCntErr) + ", FrmLost: " + str(cntFrmTout) + ", RSSI: " + str(lora.get_rssi()) + " dBm" + ", SNR : " + str(lora.get_snr()) + " dB\n")  
+def write_log(log, fileName, datetime):
+    log.add(fileName, "{}.{}.{} {}:{}:{}".format(datetime[2], datetime[1], datetime[0], datetime[4], datetime[5], datetime[6]) + ", Frequecy : {:.6f}".format(lora._frequency) + " MHz" +", FrmTx: " + str(cntTxFrame) + ", FrmRx: " + str(cntRxFrame) + " CrcOk: " + str(crcFrameRxCntOk) + ", CrcEr: " + str(crcFrameRxCntErr) + ", FrmLost: " + str(cntFrmTout) + ", RSSI: " + str(lora.get_rssi()) + " dBm" + ", SNR : " + str(lora.get_snr()) + " dB\n")  
 
 def stat_lcd():
     global lora
@@ -303,7 +305,7 @@ def calcTimeOnAir(msTout, bw, sf, fl, pl):
     timeOut = (1500*math.pow(2, sf)*(fl+pl))/(bw*msTout)
     return timeOut
 
-def loraReinit(bl, f):
+def loraReinit(bl, fileName):
     global lora, tft, button, rtc, bzykacz
     tft.fill(TFT.BLACK)                
     menu.root(tft, button, rtc, bl, bzykacz)
@@ -346,8 +348,7 @@ def loraReinit(bl, f):
                     spreading_factor=loracfg.cfg["SF"],
                     coding_rate=loracfg.cfg["CR"],
                     ppm_cor=ppm_cor_schar,
-                )   
-    f.write("Frequecy : " + str(lora._frequency) + " MHz" + ", Bandwidth : " + str(lora._bandwidth) + " Hz" + ", SF(spread factor): " + str(lora._sf) + ", CR(Coding Rate): " + str(lora._cr) + ", PL(Preamble Length): " + str(lora._pl) + "\n")
+                )
 
 
 def test_main():
@@ -355,7 +356,6 @@ def test_main():
     print(TEST_VER_STR)
     print(os.uname())
     fileName = "log{}.txt".format(logNr)
-    f = open(fileName, 'wt')
     timer.init(freq=2.5, mode=Timer.PERIODIC, callback=blink)
     loracfg.init()
     bl = PWM(Pin(13))
@@ -383,14 +383,15 @@ def test_main():
                     coding_rate=loracfg.cfg["CR"],
                     ppm_cor=ppm_cor_schar,
                 )   
-    tft.fill(TFT.BLACK)   
-    f.write(str(TEST_VER_STR + "\n"))
+    tft.fill(TFT.BLACK)
+    log = LogWriter(fileName)
+    log.add(fileName, str(TEST_VER_STR + "\n"))
     if (loracfg.cfg["MASTER"] == 1):
-        f.write(str(MASTER_STR + "\n"))
+        log.add(fileName, str(MASTER_STR + "\n"))
     else:
-        f.write(str(SLAVE_STR + "\n"))
- 
-    f.write("Frequecy : " + str(lora._frequency) + " MHz" + ", Bandwidth : " + str(lora._bandwidth) + " Hz" + ", SF(spread factor): " + str(lora._sf) + ", CR(Coding Rate): " + str(lora._cr) + ", PL(Preamble Length): " + str(lora._pl) + "\n")
+        log.add(fileName, str(SLAVE_STR + "\n"))
+
+    log.add(fileName, "Frequecy : " + str(lora._frequency) + " MHz" + ", Bandwidth : " + str(lora._bandwidth) + " Hz" + ", SF(spread factor): " + str(lora._sf) + ", CR(Coding Rate): " + str(lora._cr) + ", PL(Preamble Length): " + str(lora._pl) + "\n")
     lora.on_recv(handler)     # Set handler
     if (loracfg.cfg["MASTER"] == 0):
         lora.recv()
@@ -423,17 +424,14 @@ def test_main():
             now = rtc.datetime()
             time_lcd(now)
             stat_lcd()
-            write_log(f, now) 
-            f.close()
+            write_log(log, fileName, now) 
             file_stat = os.stat(fileName)
-            f = open(fileName, 'at')
             if ((int)(file_stat[6])) > LOG_SIZE_KB*1024:  # maksymalny rozmiar pliku okolo: LOG_SIZE_KB*kB
-                f.close()
                 logNr = logNr + 1
                 if logNr > LOG_FILE_MAX: # pliki z logami od log0..log<LOG_FILE_MAX> i nadpisanie
                     logNr = 0
                 fileName = "log{}.txt".format(logNr)
-                f = open(fileName, 'wt')
+                log.new(fileName)       
 
             if respFlag:
                 respFlag = 0
@@ -450,7 +448,8 @@ def test_main():
                 cntFrmTout = cntFrmTout + 1
 
             if (button.ok()):
-                loraReinit(bl, f)
+                loraReinit(bl, fileName)
+                log.add(fileName,"Frequecy : " + str(lora._frequency) + " MHz" + ", Bandwidth : " + str(lora._bandwidth) + " Hz" + ", SF(spread factor): " + str(lora._sf) + ", CR(Coding Rate): " + str(lora._cr) + ", PL(Preamble Length): " + str(lora._pl) + "\n")                
             gc.collect()
         else:
             tft.text((0, 0), TEST_VER_STR, TFT.WHITE, sysfont, 1)
@@ -478,19 +477,18 @@ def test_main():
                     cntTxFrame = cntTxFrame + 1           
                 else:
                     crcFrameRxCntErr = crcFrameRxCntErr + 1    
-                write_log(f, now)
-                f.close()
+                write_log(log, fileName, now)
                 file_stat = os.stat(fileName)
-                f = open(fileName, 'at')
                 if ((int)(file_stat[6])) > LOG_SIZE_KB*1024:  # maksymalny rozmiar pliku okolo: LOG_SIZE_KB*kB
-                    f.close()
                     logNr = logNr + 1
                     if logNr > LOG_FILE_MAX: # pliki z logami od log0..log<LOG_FILE_MAX> i nadpisanie
                         logNr = 0
                     fileName = "log{}.txt".format(logNr)
-                    f = open(fileName, 'wt')
+                    log.new(fileName)       
+                    
             if (button.ok()):
-                loraReinit(bl, f)
+                loraReinit(bl, fileName)
+                log.add(fileName,"Frequecy : " + str(lora._frequency) + " MHz" + ", Bandwidth : " + str(lora._bandwidth) + " Hz" + ", SF(spread factor): " + str(lora._sf) + ", CR(Coding Rate): " + str(lora._cr) + ", PL(Preamble Length): " + str(lora._pl) + "\n")
                 lora.recv()
             gc.collect()       
 test_main()
