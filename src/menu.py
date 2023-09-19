@@ -53,7 +53,8 @@ def root(tft, button, rtc, bl, bzykacz):
                 menu_exit = 0
             elif (sel == 6):
                 show_cfg(tft, button, bzykacz)
-            else:    
+            else:
+                tft.fill(TFT.BLACK)
                 menu_exit = 0
 
 def lora(tft, button, bzykacz):

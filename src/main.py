@@ -17,7 +17,7 @@ import loracfg
 import _thread
 
 # definicje stalych znakowych uzywanych wielokrotnie
-TEST_VER_STR = "Test LoRa ver.:1.14"
+TEST_VER_STR = "Test LoRa ver.:1.15"
 MASTER_STR = "LoRa Master"
 SLAVE_STR = "LoRa Slave" 
 LOG_SIZE_KB = 128                       # rozmiar pliku w kB z logiem parametrow lacznosci
@@ -279,6 +279,12 @@ def write_log(log, fileName, datetime):
 
 def stat_lcd():
     global lora
+    tft.text((0, 0), TEST_VER_STR, TFT.WHITE, sysfont, 1)
+    if (loracfg.cfg["MASTER"] == 1):
+        tft.text((0, 10), MASTER_STR, TFT.GREEN, sysfont, 1)
+    else:
+        tft.text((0, 10), SLAVE_STR, TFT.GREEN, sysfont, 1)
+    time_lcd(rtc.datetime()) 
     tft.text((0, 30), "FrmTx: " + str(cntTxFrame), TFT.YELLOW, sysfont, 1)    
     tft.text((0, 40), "FrmRx: " + str(cntRxFrame), TFT.GREEN, sysfont, 1)    
     tft.text((0, 50), "CrcOk: " + str(crcFrameRxCntOk), TFT.GREEN, sysfont, 1)    
@@ -349,6 +355,41 @@ def loraReinit(bl, fileName):
                     coding_rate=loracfg.cfg["CR"],
                     ppm_cor=ppm_cor_schar,
                 )
+def loraTxFrame(dataFrameTx, crcFrameTx):
+    global lora, tft, bzykacz, cntTxFrame
+    cntTxFrame = cntTxFrame + 1
+    randomFrame(dataFrameTx, len(dataFrameTx))
+    crcFrameTx.add_crc8(dataFrameTx, len(dataFrameTx))
+    tft.fillcircle((80, 13), 4, TFT.YELLOW)
+    bzykacz.tx(loracfg.cfg["BUZ"])
+    lora.send(dataFrameTx)
+    bzykacz.off(loracfg.cfg["BUZ"])
+    tft.fillcircle((80, 13), 4, TFT.BLACK)
+
+def loraRxFrame():
+    global lora, tft, bzykacz, loracfg
+    lora.recv()      
+    bzykacz.rx(loracfg.cfg["BUZ"])
+    if (loracfg.cfg["MASTER"] == 1):    
+        timeStepms = 10
+        timeOnAirCnt = 0
+        while ((respFlag == 0) and (timeOnAirCnt < calcTimeOnAir(timeStepms, loracfg.cfg["BW"], loracfg.cfg["SF"], 16, loracfg.cfg["PL"]))):
+            time.sleep_ms(timeStepms )
+            timeOnAirCnt = timeOnAirCnt + 1
+        bzykacz.off(loracfg.cfg["BUZ"])
+
+def checkLogFileSize(fileName, log):
+    global logNr
+    file_stat = os.stat(fileName)
+    if ((int)(file_stat[6])) > LOG_SIZE_KB*1024:  # maksymalny rozmiar pliku okolo: LOG_SIZE_KB*kB
+        logNr = logNr + 1
+        if logNr > LOG_FILE_MAX: # pliki z logami od log0..log<LOG_FILE_MAX> i nadpisanie
+            logNr = 0
+        newfileName = "log{}.txt".format(logNr)
+        log.new(newfileName)
+        return newfileName
+    else:
+        return fileName
 
 
 def test_main():
@@ -402,37 +443,11 @@ def test_main():
     crcFrameRx = Crc() 
     while(1):
         if (loracfg.cfg["MASTER"] == 1):
-            tft.text((0, 0), TEST_VER_STR, TFT.WHITE, sysfont, 1)
-            tft.text((0, 10), MASTER_STR, TFT.GREEN, sysfont, 1)
-            cntTxFrame = cntTxFrame + 1
-            randomFrame(dataFrameTx, len(dataFrameTx))
-            crcFrameTx.add_crc8(dataFrameTx, len(dataFrameTx))
-            tft.fillcircle((80, 13), 4, TFT.YELLOW)
-            bzykacz.tx(loracfg.cfg["BUZ"])
-            lora.send(dataFrameTx)
-            bzykacz.off(loracfg.cfg["BUZ"])
-            tft.fillcircle((80, 13), 4, TFT.BLACK)
-            lora.recv()      
-            bzykacz.rx(loracfg.cfg["BUZ"])
-            timeStepms = 10
-            timeOnAirCnt = 0
-            while ((respFlag == 0) and (timeOnAirCnt < calcTimeOnAir(timeStepms, loracfg.cfg["BW"], loracfg.cfg["SF"], 16, loracfg.cfg["PL"]))):
-                time.sleep_ms(timeStepms )
-                timeOnAirCnt = timeOnAirCnt + 1
-
-            bzykacz.off(loracfg.cfg["BUZ"])
-            now = rtc.datetime()
-            time_lcd(now)
+            loraTxFrame(dataFrameTx, crcFrameTx)
+            loraRxFrame()
             stat_lcd()
-            write_log(log, fileName, now) 
-            file_stat = os.stat(fileName)
-            if ((int)(file_stat[6])) > LOG_SIZE_KB*1024:  # maksymalny rozmiar pliku okolo: LOG_SIZE_KB*kB
-                logNr = logNr + 1
-                if logNr > LOG_FILE_MAX: # pliki z logami od log0..log<LOG_FILE_MAX> i nadpisanie
-                    logNr = 0
-                fileName = "log{}.txt".format(logNr)
-                log.new(fileName)       
-
+            write_log(log, fileName, rtc.datetime())
+            fileName = checkLogFileSize(fileName, log)     
             if respFlag:
                 respFlag = 0
                 cntRxFrame = cntRxFrame + 1
@@ -452,10 +467,6 @@ def test_main():
                 log.add(fileName,"Frequecy : " + str(lora._frequency) + " MHz" + ", Bandwidth : " + str(lora._bandwidth) + " Hz" + ", SF(spread factor): " + str(lora._sf) + ", CR(Coding Rate): " + str(lora._cr) + ", PL(Preamble Length): " + str(lora._pl) + "\n")                
             gc.collect()
         else:
-            tft.text((0, 0), TEST_VER_STR, TFT.WHITE, sysfont, 1)
-            tft.text((0, 10), SLAVE_STR, TFT.GREEN, sysfont, 1)                
-            now = rtc.datetime()
-            time_lcd(now)
             stat_lcd()
             if respFlag:
                 respFlag = 0
@@ -464,28 +475,13 @@ def test_main():
                     crcFrameRxCntOk = crcFrameRxCntOk + 1                 
                     new_freq = lora.freq_sync_rx()  # wyznaczamy czestotliwosci z poprawka wyliczona po odebranej ramce
                     lora.sleep()
-                    lora.set_frequency(new_freq)                                       
-                    randomFrame(dataFrameTx, len(dataFrameTx))
-                    crcFrameTx.add_crc8(dataFrameTx, len(dataFrameTx))
-                    tft.fillcircle((80, 13), 4, TFT.YELLOW)
-                    bzykacz.tx(loracfg.cfg["BUZ"])            
-                    lora.send(dataFrameTx)
-                    bzykacz.off(loracfg.cfg["BUZ"])
-                    tft.fillcircle((80, 13), 4, TFT.BLACK)
-                    lora.recv()
-                    bzykacz.rx(loracfg.cfg["BUZ"])            
-                    cntTxFrame = cntTxFrame + 1           
+                    lora.set_frequency(new_freq)
+                    loraTxFrame(dataFrameTx, crcFrameTx)
+                    loraRxFrame()
                 else:
                     crcFrameRxCntErr = crcFrameRxCntErr + 1    
-                write_log(log, fileName, now)
-                file_stat = os.stat(fileName)
-                if ((int)(file_stat[6])) > LOG_SIZE_KB*1024:  # maksymalny rozmiar pliku okolo: LOG_SIZE_KB*kB
-                    logNr = logNr + 1
-                    if logNr > LOG_FILE_MAX: # pliki z logami od log0..log<LOG_FILE_MAX> i nadpisanie
-                        logNr = 0
-                    fileName = "log{}.txt".format(logNr)
-                    log.new(fileName)       
-                    
+                write_log(log, fileName, rtc.datetime())
+                fileName = checkLogFileSize(fileName, log)
             if (button.ok()):
                 loraReinit(bl, fileName)
                 log.add(fileName,"Frequecy : " + str(lora._frequency) + " MHz" + ", Bandwidth : " + str(lora._bandwidth) + " Hz" + ", SF(spread factor): " + str(lora._sf) + ", CR(Coding Rate): " + str(lora._cr) + ", PL(Preamble Length): " + str(lora._pl) + "\n")
