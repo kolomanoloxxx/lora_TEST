@@ -17,7 +17,7 @@ import loracfg
 import _thread
 
 # definicje stalych znakowych uzywanych wielokrotnie
-TEST_VER_STR = "Test LoRa ver.:1.15"
+TEST_VER_STR = "Test LoRa ver.:1.16"
 MASTER_STR = "LoRa Master"
 SLAVE_STR = "LoRa Slave" 
 LOG_SIZE_KB = 128                       # rozmiar pliku w kB z logiem parametrow lacznosci
@@ -391,6 +391,31 @@ def checkLogFileSize(fileName, log):
     else:
         return fileName
 
+def ifResp(fileName, log, dataFrameRx, crcFrameRx, dataFrameTx, crcFrameTx):
+    global lora, loracfg, respFlag, cntRxFrame, crcFrameRxCntOk, crcFrameRxCntErr, cntFrmTout, rtc 
+    if respFlag:
+        respFlag = 0
+        cntRxFrame = cntRxFrame + 1
+        if (crcFrameRx.check_crc8(dataFrameRx, len(dataFrameRx))):
+            crcFrameRxCntOk = crcFrameRxCntOk + 1
+            if (loracfg.cfg["MASTER"] == 0): 
+                new_freq = lora.freq_sync_rx()  # wyznaczamy czestotliwosci z poprawka wyliczona po odebranej ramce
+                lora.sleep()
+                lora.set_frequency(new_freq)
+                loraTxFrame(dataFrameTx, crcFrameTx)
+                loraRxFrame()
+        else:
+            crcFrameRxCntErr = crcFrameRxCntErr + 1    
+        if (loracfg.cfg["MASTER"] == 0): 
+            write_log(log, fileName, rtc.datetime())
+            fileName = checkLogFileSize(fileName, log)
+        else:
+            new_freq = lora.freq_sync_rx()  # wyznaczamy czestotliwosci z poprawka wyliczona po odebranej ramce
+            lora.sleep()
+            lora.set_frequency(new_freq)
+    else:
+        if (loracfg.cfg["MASTER"] == 1): 
+            cntFrmTout = cntFrmTout + 1        
 
 def test_main():
     global cntRxFrame, cntTxFrame, respFlag, dataFrameRx, crcFrameRxCntOk, crcFrameRxCntErr, logNr, cntFrmTout, lora
@@ -448,40 +473,14 @@ def test_main():
             stat_lcd()
             write_log(log, fileName, rtc.datetime())
             fileName = checkLogFileSize(fileName, log)     
-            if respFlag:
-                respFlag = 0
-                cntRxFrame = cntRxFrame + 1
-                if (crcFrameRx.check_crc8(dataFrameRx, len(dataFrameRx))):
-                    crcFrameRxCntOk = crcFrameRxCntOk + 1
-                else:
-                    crcFrameRxCntErr = crcFrameRxCntErr + 1
-
-                new_freq = lora.freq_sync_rx()  # wyznaczamy czestotliwosci z poprawka wyliczona po odebranej ramce
-                lora.sleep()
-                lora.set_frequency(new_freq)                
-            else:
-                cntFrmTout = cntFrmTout + 1
-
+            ifResp(fileName, log, dataFrameRx, crcFrameRx, dataFrameTx, crcFrameTx)
             if (button.ok()):
                 loraReinit(bl, fileName)
                 log.add(fileName,"Frequecy : " + str(lora._frequency) + " MHz" + ", Bandwidth : " + str(lora._bandwidth) + " Hz" + ", SF(spread factor): " + str(lora._sf) + ", CR(Coding Rate): " + str(lora._cr) + ", PL(Preamble Length): " + str(lora._pl) + "\n")                
             gc.collect()
         else:
             stat_lcd()
-            if respFlag:
-                respFlag = 0
-                cntRxFrame = cntRxFrame + 1
-                if (crcFrameRx.check_crc8(dataFrameRx, len(dataFrameRx))):
-                    crcFrameRxCntOk = crcFrameRxCntOk + 1                 
-                    new_freq = lora.freq_sync_rx()  # wyznaczamy czestotliwosci z poprawka wyliczona po odebranej ramce
-                    lora.sleep()
-                    lora.set_frequency(new_freq)
-                    loraTxFrame(dataFrameTx, crcFrameTx)
-                    loraRxFrame()
-                else:
-                    crcFrameRxCntErr = crcFrameRxCntErr + 1    
-                write_log(log, fileName, rtc.datetime())
-                fileName = checkLogFileSize(fileName, log)
+            ifResp(fileName, log, dataFrameRx, crcFrameRx, dataFrameTx, crcFrameTx) 
             if (button.ok()):
                 loraReinit(bl, fileName)
                 log.add(fileName,"Frequecy : " + str(lora._frequency) + " MHz" + ", Bandwidth : " + str(lora._bandwidth) + " Hz" + ", SF(spread factor): " + str(lora._sf) + ", CR(Coding Rate): " + str(lora._cr) + ", PL(Preamble Length): " + str(lora._pl) + "\n")
