@@ -429,9 +429,9 @@ def date_set(tft, button, rtc, bzykacz):
 def time_set(tft, button, rtc, bzykacz):
     tft.fill(TFT.BLACK)
     datetime = rtc.datetime()
-    godzina = 0
-    minuta = 0
-    sekunda = 0
+    godzina = int(datetime[4])
+    minuta = int(datetime[5])
+    sekunda = int(datetime[6])    
     sel = 1
     menu_exit = 1
     while(menu_exit):
@@ -475,7 +475,7 @@ def time_set(tft, button, rtc, bzykacz):
                     sekunda = 0
             if sel == 4:
               menu_exit = 0
-              rtc.datetime((datetime[0], datetime[1], datetime[2], godzina, minuta, sekunda, datetime[6], datetime[7]))              
+              rtc.datetime((datetime[0], datetime[1], datetime[2], datetime[3], godzina, minuta, sekunda, datetime[7]))
               tft.fill(TFT.BLACK)
 
         if key == 2:
@@ -493,7 +493,7 @@ def time_set(tft, button, rtc, bzykacz):
                     sekunda = 59
             if sel == 4:
                 menu_exit = 0
-                rtc.datetime((datetime[0], datetime[1], datetime[2], godzina, minuta, sekunda, datetime[6], datetime[7]))              
+                rtc.datetime((datetime[0], datetime[1], datetime[2], datetime[3], godzina, minuta, sekunda, datetime[7]))
                 tft.fill(TFT.BLACK)
     
         if key == 4:
