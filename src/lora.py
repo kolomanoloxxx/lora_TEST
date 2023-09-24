@@ -16,6 +16,7 @@ REG_FRF_MSB = 0x06
 REG_FRF_MID = 0x07
 REG_FRF_LSB = 0x08
 REG_PA_CONFIG = 0x09
+REG_OCP = 0x0b
 REG_LNA = 0x0c
 REG_FIFO_ADDR_PTR = 0x0d
 REG_FIFO_TX_BASE_ADDR = 0x0e
@@ -42,6 +43,7 @@ REG_IMAGE_CAL = 0x3B
 REG_TEMP = 0x3C
 REG_DIO_MAPPING_1 = 0x40
 REG_VERSION = 0x42
+REG_PA_DAC = 0x4D
 
 MODE_LORA = 0x80
 MODE_SLEEP = 0x00
@@ -55,6 +57,8 @@ IRQ_PAYLOAD_CRC_ERROR_MASK = 0x20
 MAX_PKT_LENGTH = 255
 
 RFLR_OPMODE_LONGRANGEMODE = 0x80
+
+REG_PA_DAC_20DBM = 0x87
 
 class LoRa:
 
@@ -84,14 +88,29 @@ class LoRa:
         self._write(REG_MODEM_CONFIG_3, 0x04)  # Gain by AGC
         self.set_spreading_factor(kw.get('spreading_factor', 12))
         self.set_tx_power(kw.get('tx_power', 24))
-        self._implicit = kw.get('implicit', False)
-        self.set_implicit(self._implicit)
+        if self._sf == 6:
+            implicit = True
+        else:   
+            implicit = kw.get('implicit', False)
+        self._implicit = not(implicit)
+        self.set_implicit(implicit)
         self.set_sync_word(kw.get('sync_word', 0x75))
         self._on_recv = kw.get('on_recv', None)
         self.set_ppm_correction(kw.get('ppm_cor', 0x00))
+        self._write(REG_OCP, 27)  # Zgodnie z datashit zabezpieczenie nadpradowe na max 240mA     
+        self._write(REG_PA_DAC, REG_PA_DAC_20DBM)  # Zgodnie z datashit tak ma byc dla 20dBm
         self._write(REG_FIFO_TX_BASE_ADDR, TX_BASE_ADDR)
         self._write(REG_FIFO_RX_BASE_ADDR, RX_BASE_ADDR)
         self.standby()
+#        print(self._read(REG_MODEM_CONFIG_1))
+#        print(self._read(REG_MODEM_CONFIG_2))
+#        print(self._read(REG_MODEM_CONFIG_3))
+#        print(self._read(REG_DETECTION_OPTIMIZE))
+#        print(self._read(REG_DETECTION_THRESHOLD))
+#        print(self._read(REG_PA_CONFIG))
+#        print(self._read(REG_LNA))
+#        print(self._read(REG_PA_DAC))
+        
 
     def begin_packet(self):
         self.standby()
