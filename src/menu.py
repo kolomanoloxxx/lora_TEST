@@ -9,7 +9,7 @@ import os
 import loracfg
 import keys
 
-def root(tft, button, rtc, bl, bzykacz):
+def root(tft, button, rtc, bl, bzykacz, lora):
     tft.fill(TFT.BLACK)
     sel = 1
     menu_exit = 1
@@ -23,7 +23,8 @@ def root(tft, button, rtc, bl, bzykacz):
         tft.text((0, 40), "Bzykacz", color[4], sysfont, 1)
         tft.text((0, 50), "Zapisz konfiguracje", color[5], sysfont, 1)
         tft.text((0, 60), "Pokaz konfiguracje", color[6], sysfont, 1)
-        tft.text((0, 70), "Wyjscie", color[7], sysfont, 1)
+        tft.text((0, 70), "Kasuj statystyki", color[7], sysfont, 1)
+        tft.text((0, 80), "Wyjscie", color[8], sysfont, 1)
         
         while(button.read()):
             pass
@@ -32,16 +33,16 @@ def root(tft, button, rtc, bl, bzykacz):
             key = button.read()
         bzykacz.beep(1)
         if key == 1:
-            sel = sel - 1
+            sel -= 1
             if sel == 0:
-                sel = 7
+                sel = 8
         if key == 2:
-            sel = sel + 1
-            if sel == 8:
+            sel += 1
+            if sel == 9:
                 sel = 1  
         if key == 4:
             if (sel == 1):
-                lora(tft, button, bzykacz)
+                loram(tft, button, bzykacz)
             elif (sel == 2):
                 date_time(tft, button, rtc, bzykacz)
             elif (sel == 3):
@@ -53,11 +54,16 @@ def root(tft, button, rtc, bl, bzykacz):
                 menu_exit = 0
             elif (sel == 6):
                 show_cfg(tft, button, bzykacz)
+            elif (sel == 7):
+                if lora:
+                    lora.clrStat()
+                    tft.text((0, 70), "Kasuj statystyki", TFT.RED, sysfont, 1)
+                    time.sleep_ms(1000)
             else:
                 tft.fill(TFT.BLACK)
                 menu_exit = 0
 
-def lora(tft, button, bzykacz):
+def loram(tft, button, bzykacz):
     tft.fill(TFT.BLACK)
     sel = 1
     menu_exit = 1
@@ -80,11 +86,11 @@ def lora(tft, button, bzykacz):
             key = button.read()
         bzykacz.beep(1)            
         if key == 1:
-            sel = sel - 1
+            sel -= 1
             if sel == 0:
                 sel = 8
         if key == 2:
-            sel = sel + 1
+            sel += 1
             if sel == 9:
                 sel = 1  
         if key == 4:
@@ -136,11 +142,11 @@ def lora_set(tft, sel, button, bzykacz):
                 key = button.read()
             bzykacz.beep(1)
             if key == 1:
-                freq = freq+1
+                freq += 1
                 if (freq > 525):
                     freq = 410
             if key == 2:
-                freq = freq-1
+                freq -= 1
                 if (freq < 410):
                     freq = 525
             if key == 4:
@@ -167,11 +173,11 @@ def lora_set(tft, sel, button, bzykacz):
                 key = button.read()
             bzykacz.beep(1)            
             if key == 1:
-                j = j+1
+                j += 1
                 if (j > 9):
                     j = 0
             if key == 2:
-                j = j-1
+                j -= 1
                 if (j < 0):
                     j = 9
             if key == 4:
@@ -195,11 +201,11 @@ def lora_set(tft, sel, button, bzykacz):
                 key = button.read()
             bzykacz.beep(1)            
             if key == 1:
-                sf = sf+1
+                sf += 1
                 if (sf > 12):
                     sf = 6
             if key == 2:
-                sf = sf-1
+                sf -= 1
                 if (sf < 6):
                     sf = 12
             if key == 4:
@@ -222,11 +228,11 @@ def lora_set(tft, sel, button, bzykacz):
                 key = button.read()
             bzykacz.beep(1)            
             if key == 1:
-                cr = cr+1
+                cr += 1
                 if (cr > 8):
                     cr = 5
             if key == 2:
-                cr = cr-1
+                cr -= 1
                 if (cr < 5):
                     cr = 8
             if key == 4:
@@ -249,11 +255,11 @@ def lora_set(tft, sel, button, bzykacz):
                 key = button.read()
             bzykacz.beep(1)            
             if key == 1:
-                pl = pl+1
+                pl += 1
                 if (pl > 65000):
                     pl = 65000
             if key == 2:
-                pl = pl-1
+                pl -= 1
                 if (pl < 1):
                     pl = 1
             if key == 4:
@@ -276,11 +282,11 @@ def lora_set(tft, sel, button, bzykacz):
                 key = button.read()
             bzykacz.beep(1)
             if key == 1:
-                ppm = ppm+1
+                ppm += 1
                 if (ppm > 127):
                     ppm = 127
             if key == 2:
-                ppm = ppm-1
+                ppm -= 1
                 if (ppm < -127):
                     ppm = -127
             if key == 4:
@@ -290,7 +296,7 @@ def lora_set(tft, sel, button, bzykacz):
 
 def save_cfg(tft):
     tft.fill(TFT.BLACK)
-    tft.text((0, 0), "Konfiguracja zapisana", TFT.WHITE , sysfont, 1)
+    tft.text((0, 0), "Konfiguracja zapisana", TFT.RED , sysfont, 1)
     loracfg.write()
     time.sleep_ms(3000)  
     tft.fill(TFT.BLACK)
@@ -337,11 +343,11 @@ def date_time(tft, button, rtc, bzykacz):
             key = button.read()
         bzykacz.beep(1)    
         if key == 1:
-            sel = sel - 1
+            sel -= 1
             if sel == 0:
                 sel = 3
         if key == 2:
-            sel = sel + 1
+            sel += 1
             if sel == 4:
                 sel = 1  
         if key == 4:
@@ -387,15 +393,15 @@ def date_set(tft, button, rtc, bzykacz):
         bzykacz.beep(1)
         if key == 1:
             if sel == 1:
-                dzien = dzien + 1
+                dzien += 1
                 if (dzien>31):
                     dzien = 31
             if sel == 2:
-                miesiac = miesiac + 1
+                miesiac += 1
                 if (miesiac>12):
                     miesiac = 12
             if sel == 3:
-                rok = rok + 1
+                rok += 1
                 if (rok>2050):
                     rok = 2050
             if sel == 4:
@@ -405,15 +411,15 @@ def date_set(tft, button, rtc, bzykacz):
 
         if key == 2:
             if sel == 1:
-                dzien = dzien - 1
+                dzien -= 1
                 if (dzien<1):
                     dzien = 1
             if sel == 2:
-                miesiac = miesiac - 1
+                miesiac -= 1
                 if (miesiac<1):
                     miesiac = 1
             if sel == 3:
-                rok = rok - 1
+                rok -= 1
                 if (rok<2000):
                     rok = 2000
             if sel == 4:
@@ -422,7 +428,7 @@ def date_set(tft, button, rtc, bzykacz):
                 tft.fill(TFT.BLACK)
     
         if key == 4:
-            sel = sel + 1
+            sel += 1
             if sel == 5:
                 sel = 1
                 
@@ -462,15 +468,15 @@ def time_set(tft, button, rtc, bzykacz):
         bzykacz.beep(1)
         if key == 1:
             if sel == 1:
-                godzina = godzina + 1
+                godzina += 1
                 if (godzina>23):
                     godzina = 0
             if sel == 2:
-                minuta = minuta + 1
+                minuta += 1
                 if (minuta>59):
                     minuta = 0
             if sel == 3:
-                sekunda = sekunda + 1
+                sekunda += 1
                 if (sekunda>59):
                     sekunda = 0
             if sel == 4:
@@ -480,15 +486,15 @@ def time_set(tft, button, rtc, bzykacz):
 
         if key == 2:
             if sel == 1:
-                godzina = godzina - 1
+                godzina -= 1
                 if (godzina<0):
                     godzina = 23
             if sel == 2:
-                minuta = minuta - 1
+                minuta -= 1
                 if (minuta<0):
                     minuta = 59
             if sel == 3:
-                sekunda = sekunda - 1
+                sekunda -= 1
                 if (sekunda<0):
                     sekunda = 59
             if sel == 4:
@@ -497,7 +503,7 @@ def time_set(tft, button, rtc, bzykacz):
                 tft.fill(TFT.BLACK)
     
         if key == 4:
-            sel = sel + 1
+            sel += 1
             if sel == 5:
                 sel = 1
     
@@ -521,11 +527,11 @@ def lcd(tft, button, bl, bzykacz):
             key = button.read()
         bzykacz.beep(1)
         if key == 1:
-            jasnosc = jasnosc + 1
+            jasnosc += 1
             if jasnosc == 101:
                 jasnosc = 100
         if key == 2:
-            jasnosc = jasnosc - 1
+            jasnosc -= 1
             if jasnosc < 0:
                 jasnosc = 0  
         if key == 4:

@@ -61,7 +61,11 @@ RFLR_OPMODE_LONGRANGEMODE = 0x80
 REG_PA_DAC_20DBM = 0x87
 
 class LoRa:
-
+    cntRxFrame = 0
+    cntTxFrame = 0
+    cntFrmTout = 0
+    crcFrameRxCntOk = 0
+    crcFrameRxCntErr = 0
     def __init__(self, spi, **kw):
         self.spi = spi
         self.cs = kw['cs']
@@ -319,3 +323,9 @@ class LoRa:
     def _write(self, addr, x):
         self._transfer(addr | 0x80, x)
 
+    def clrStat(self):
+        cntRxFrame = 0
+        cntTxFrame = 0
+        cntFrmTout = 0
+        crcFrameRxCntOk = 0
+        crcFrameRxCntErr = 0

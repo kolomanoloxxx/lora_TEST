@@ -17,7 +17,7 @@ import loracfg
 import _thread
 
 # definicje stalych znakowych uzywanych wielokrotnie
-TEST_VER_STR = "Test LoRa ver.:1.18"
+TEST_VER_STR = "Test LoRa ver.:1.19"
 MASTER_STR = "LoRa Master"
 SLAVE_STR = "LoRa Slave" 
 LOG_SIZE_KB = 128                       # rozmiar pliku w kB z logiem parametrow lacznosci
@@ -30,11 +30,6 @@ LOG_FILE_MAX = 7                        # ilosc tworzonych plikow logow przed na
 # dla SF = 10 czulosc odbiornika -134..135dBm, SNR = -15dB
 # dla SF = 7 czulosc odbiornika -125..126dBm, SNR = -7dB
 
-cntRxFrame = 0
-cntTxFrame = 0
-cntFrmTout = 0
-crcFrameRxCntOk = 0
-crcFrameRxCntErr = 0
 respFlag = 0
 logNr = 0
 lora = 0
@@ -275,7 +270,7 @@ def time_lcd(datetime):
     tft.text((0, 20), "{}.{}.{} {}:{}:{}".format(datetime[2], datetime[1], datetime[0], hours, minutes, seconds), TFT.WHITE, sysfont, 1)    
 
 def write_log(log, fileName, datetime):
-    log.add(fileName, "{}.{}.{} {}:{}:{}".format(datetime[2], datetime[1], datetime[0], datetime[4], datetime[5], datetime[6]) + ", Frequecy : {:.6f}".format(lora._frequency) + " MHz" +", FrmTx: " + str(cntTxFrame) + ", FrmRx: " + str(cntRxFrame) + " CrcOk: " + str(crcFrameRxCntOk) + ", CrcEr: " + str(crcFrameRxCntErr) + ", FrmLost: " + str(cntFrmTout) + ", RSSI: " + str(lora.get_rssi()) + " dBm" + ", SNR : " + str(lora.get_snr()) + " dB\n")  
+    log.add(fileName, "{}.{}.{} {}:{}:{}".format(datetime[2], datetime[1], datetime[0], datetime[4], datetime[5], datetime[6]) + ", Frequecy : {:.6f}".format(lora._frequency) + " MHz" +", FrmTx: " + str(lora.cntTxFrame) + ", FrmRx: " + str(lora.cntRxFrame) + " CrcOk: " + str(lora.crcFrameRxCntOk) + ", CrcEr: " + str(lora.crcFrameRxCntErr) + ", FrmLost: " + str(lora.cntFrmTout) + ", RSSI: " + str(lora.get_rssi()) + " dBm" + ", SNR : " + str(lora.get_snr()) + " dB\n")  
 
 def stat_lcd():
     global lora
@@ -285,17 +280,17 @@ def stat_lcd():
     else:
         tft.text((0, 10), SLAVE_STR, TFT.GREEN, sysfont, 1)
     time_lcd(rtc.datetime()) 
-    tft.text((0, 30), "FrmTx: " + str(cntTxFrame), TFT.YELLOW, sysfont, 1)    
-    tft.text((0, 40), "FrmRx: " + str(cntRxFrame), TFT.GREEN, sysfont, 1)    
-    tft.text((0, 50), "CrcOk: " + str(crcFrameRxCntOk), TFT.GREEN, sysfont, 1)    
-    tft.text((0, 60), "CrcEr: " + str(crcFrameRxCntErr), TFT.RED, sysfont, 1)    
+    tft.text((0, 30), "FrmTx: " + str(lora.cntTxFrame), TFT.YELLOW, sysfont, 1)    
+    tft.text((0, 40), "FrmRx: " + str(lora.cntRxFrame), TFT.GREEN, sysfont, 1)    
+    tft.text((0, 50), "CrcOk: " + str(lora.crcFrameRxCntOk), TFT.GREEN, sysfont, 1)    
+    tft.text((0, 60), "CrcEr: " + str(lora.crcFrameRxCntErr), TFT.RED, sysfont, 1)    
     if (loracfg.cfg["MASTER"] == 1):
-        tft.text((0, 70), "FrmLost: " + str(cntFrmTout), TFT.RED, sysfont, 1)
-        flr = (int)(10000*(cntFrmTout/cntTxFrame))
+        tft.text((0, 70), "FrmLost: " + str(lora.cntFrmTout), TFT.RED, sysfont, 1)
+        flr = (int)(10000*(lora.cntFrmTout/lora.cntTxFrame))
         tft.text((0, 80), "FLR: " + str(flr/100) + " %   ", TFT.YELLOW, sysfont, 1)
     else:
-        if crcFrameRxCntErr + crcFrameRxCntOk > 0:
-            cfr = (int)(10000*(crcFrameRxCntErr/(crcFrameRxCntErr + crcFrameRxCntOk)))
+        if lora.crcFrameRxCntErr + lora.crcFrameRxCntOk > 0:
+            cfr = (int)(10000*(lora.crcFrameRxCntErr/(lora.crcFrameRxCntErr + lora.crcFrameRxCntOk)))
             tft.text((0, 70), "CFR: " + str(cfr/100) + " %   ", TFT.YELLOW, sysfont, 1)    
         else:
             tft.text((0, 70), "CFR: 0,00 %   ", TFT.YELLOW, sysfont, 1)
@@ -314,7 +309,7 @@ def calcTimeOnAir(msTout, bw, sf, fl, pl):
 def loraReinit(bl, fileName):
     global lora, tft, button, rtc, bzykacz
     tft.fill(TFT.BLACK)                
-    menu.root(tft, button, rtc, bl, bzykacz)
+    menu.root(tft, button, rtc, bl, bzykacz, lora)
     # w Pytonie brak typu signet char jest signet int wiec trza kombinowac jak za komuny bylo lepiej nie mowic
     osc_ppm = loracfg.cfg["PPM"]
     if osc_ppm < 0:
@@ -356,8 +351,8 @@ def loraReinit(bl, fileName):
                     ppm_cor=ppm_cor_schar,
                 )
 def loraTxFrame(dataFrameTx, crcFrameTx):
-    global lora, tft, bzykacz, cntTxFrame
-    cntTxFrame = cntTxFrame + 1
+    global lora, tft, bzykacz
+    lora.cntTxFrame += 1
     randomFrame(dataFrameTx, len(dataFrameTx))
     crcFrameTx.add_crc8(dataFrameTx, len(dataFrameTx))
     tft.fillcircle((80, 13), 4, TFT.YELLOW)
@@ -392,12 +387,12 @@ def checkLogFileSize(fileName, log):
         return fileName
 
 def ifResp(fileName, log, dataFrameRx, crcFrameRx, dataFrameTx, crcFrameTx):
-    global lora, loracfg, respFlag, cntRxFrame, crcFrameRxCntOk, crcFrameRxCntErr, cntFrmTout, rtc 
+    global lora, loracfg, respFlag, rtc 
     if respFlag:
         respFlag = 0
-        cntRxFrame = cntRxFrame + 1
+        lora.cntRxFrame += 1
         if (crcFrameRx.check_crc8(dataFrameRx, len(dataFrameRx))):
-            crcFrameRxCntOk = crcFrameRxCntOk + 1
+            lora.crcFrameRxCntOk += 1
             if (loracfg.cfg["MASTER"] == 0): 
                 new_freq = lora.freq_sync_rx()  # wyznaczamy czestotliwosci z poprawka wyliczona po odebranej ramce
                 lora.sleep()
@@ -405,7 +400,7 @@ def ifResp(fileName, log, dataFrameRx, crcFrameRx, dataFrameTx, crcFrameTx):
                 loraTxFrame(dataFrameTx, crcFrameTx)
                 loraRxFrame()
         else:
-            crcFrameRxCntErr = crcFrameRxCntErr + 1    
+            lora.crcFrameRxCntErr += 1    
         if (loracfg.cfg["MASTER"] == 0): 
             write_log(log, fileName, rtc.datetime())
             fileName = checkLogFileSize(fileName, log)
@@ -415,10 +410,10 @@ def ifResp(fileName, log, dataFrameRx, crcFrameRx, dataFrameTx, crcFrameTx):
             lora.set_frequency(new_freq)
     else:
         if (loracfg.cfg["MASTER"] == 1): 
-            cntFrmTout = cntFrmTout + 1        
+            lora.cntFrmTout += 1        
 
 def test_main():
-    global cntRxFrame, cntTxFrame, respFlag, dataFrameRx, crcFrameRxCntOk, crcFrameRxCntErr, logNr, cntFrmTout, lora
+    global respFlag, dataFrameRx, logNr, lora
     print(TEST_VER_STR)
     print(os.uname())
     fileName = "log{}.txt".format(logNr)
@@ -430,7 +425,7 @@ def test_main():
     bzykacz.off(loracfg.cfg["BUZ"])
     showBMP()
     time.sleep_ms(3000)
-    menu.root(tft, button, rtc, bl, bzykacz)
+    menu.root(tft, button, rtc, bl, bzykacz, lora)
     # w Pytonie brak typu signet char jest signet int wiec trza kombinowac jak za komuny bylo lepiej nie mowic
     osc_ppm = loracfg.cfg["PPM"]
     if osc_ppm < 0:
@@ -461,8 +456,7 @@ def test_main():
     lora.on_recv(handler)     # Set handler
     if (loracfg.cfg["MASTER"] == 0):
         lora.recv()
-    cntFrmOk = 0
-    cntFrmTout= 0
+    lora.clrStat()
     dataFrameTx = bytearray(16)    
     crcFrameTx = Crc()
     crcFrameRx = Crc() 
